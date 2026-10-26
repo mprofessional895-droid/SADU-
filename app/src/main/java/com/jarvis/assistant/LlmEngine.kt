@@ -14,6 +14,8 @@ class LlmEngine(private val ctx: Context) {
 
     fun isModelPresent(): Boolean = modelFile.exists() && modelFile.length() > 50_000_000L
 
+    val isLoaded: Boolean get() = llm != null
+
     @Synchronized
     fun load() {
         if (llm != null) return
