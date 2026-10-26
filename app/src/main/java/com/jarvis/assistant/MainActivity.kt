@@ -267,13 +267,20 @@ class MainActivity : AppCompatActivity() {
 
         busy = true
         val placeholder = addBubble("...", false)
-        val prompt = buildPrompt(text)
+        val plain = buildPlainPrompt(text)
+        val templated = buildPrompt(text)
         worker.execute {
             val reply = try {
-                engine.generate(prompt)
+                fun clean(s: String) = s
                     .replace("<end_of_turn>", "")
+                    .replace("<eos>", "")
                     .trim()
-                    .ifEmpty { "Hmm, I'm not sure what to say to that." }
+                    .removePrefix("Jarvis:")
+                    .trim()
+                // The model file already adds Gemma's chat format, so try plain text first.
+                var r = clean(engine.generate(plain))
+                if (r.isBlank()) r = clean(engine.generate(templated))
+                r.ifEmpty { "Hmm, I'm not sure what to say to that." }
             } catch (e: Throwable) {
                 "Sorry, my brain hit an error: ${e.message}"
             }
@@ -284,6 +291,23 @@ class MainActivity : AppCompatActivity() {
                 speak(reply)
             }
         }
+    }
+
+    private fun buildPlainPrompt(userText: String): String {
+        val sb = StringBuilder(
+            "You are Jarvis, the user's warm, friendly personal assistant and close friend, " +
+                "running privately on their phone. Talk casually like a friend. " +
+                "Keep answers short: 1 to 3 sentences. Reply in the same language the user uses."
+        )
+        val facts = memory.asContext()
+        if (facts.isNotEmpty()) sb.append(" Things you know about the user: ").append(facts).append(".")
+        sb.append("\n\n")
+        for ((u, a) in history.takeLast(2)) {
+            sb.append("User: ").append(u.take(200)).append("\n")
+            sb.append("Jarvis: ").append(a.take(200)).append("\n")
+        }
+        sb.append("User: ").append(userText.take(500)).append("\nJarvis:")
+        return sb.toString()
     }
 
     private fun buildPrompt(userText: String): String {
