@@ -22,6 +22,12 @@ data class ChatMsg(val text: String, val fromUser: Boolean, val id: Long = Syste
 
 enum class Screen { Chat, Settings }
 
+private const val NEW_CHAT_TITLE = "New chat"
+private const val GREETING =
+    "Hi, I'm Jarvis. Talk or type. Try \"set an alarm for 6:30 am\", " +
+        "\"text Mom that I'm on my way\", \"open camera\" or \"read the screen\" - or just chat with me."
+private const val READY = "Ready - running offline on your phone"
+
 class JarvisViewModel(app: Application) : AndroidViewModel(app) {
 
     private val ctx = app.applicationContext
@@ -32,9 +38,20 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     private val tools = Tools(actions, memory)
     private val brain: Brain = OfflineBrain(engine)
     private val assistant = Assistant(brain, actions, memory, tools)
+    private val store = ChatHistory(ctx)
 
-    var messages by mutableStateOf<List<ChatMsg>>(emptyList())
+    private var idSeed = System.currentTimeMillis()
+
+    /** Every saved conversation, newest first. */
+    var sessions by mutableStateOf<List<ChatSession>>(emptyList())
         private set
+    var currentId by mutableStateOf(0L)
+        private set
+
+    /** The conversation on screen. Single source of truth is [sessions]. */
+    val current: ChatSession? get() = sessions.firstOrNull { it.id == currentId }
+    val messages: List<ChatMsg> get() = current?.messages ?: emptyList()
+
     var status by mutableStateOf("")
         private set
     var busy by mutableStateOf(false)
@@ -62,24 +79,130 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         ctx,
         onText = { submit(it) },
         onStatus = { s -> status = s },
-        onError = { e -> messages = messages + ChatMsg(e, false) },
+        onError = { e -> push(ChatMsg(e, false)) },
     )
 
     init {
         voice.init()
+        val saved = store.load().sortedByDescending { it.createdAt }
+        if (saved.isEmpty()) {
+            val s = newSession()
+            sessions = listOf(s)
+            currentId = s.id
+        } else {
+            sessions = saved
+            currentId = saved.first().id
+        }
         modelPresent = engine.isModelPresent()
         if (modelPresent) {
             loadModel()
         } else {
             status = "AI model file needed (one time)"
         }
-        messages = messages + ChatMsg(
-            "Hi, I'm Jarvis. Talk or type. Try: \"set an alarm for 6:30 am\", " +
-                "\"text Mom that I'm on my way\", \"open camera\", \"read the screen\", " +
-                "or just chat with me.",
-            false
-        )
     }
+
+    // ------------------------------------------------------------ conversations
+
+    private fun newSession() =
+        ChatSession(nextId(), NEW_CHAT_TITLE, System.currentTimeMillis(), listOf(ChatMsg(GREETING, false)))
+
+    private fun nextId(): Long = ++idSeed
+
+    /** Start a fresh chat. Reuses the current one if nothing was said yet. */
+    fun newChat() {
+        pruneEmpty()
+        if (current?.messages?.none { it.fromUser } == true) {
+            assistant.resetHistory()
+            persist()
+            return
+        }
+        val s = newSession()
+        sessions = listOf(s) + sessions
+        currentId = s.id
+        assistant.resetHistory()
+        persist()
+    }
+
+    fun openChat(id: Long) {
+        if (id == currentId) return
+        currentId = id
+        assistant.resetHistory()
+    }
+
+    fun deleteChat(id: Long) {
+        sessions = sessions.filterNot { it.id == id }
+        if (currentId == id) {
+            currentId = sessions.firstOrNull()?.id ?: 0L
+            if (currentId == 0L) {
+                val s = newSession()
+                sessions = listOf(s)
+                currentId = s.id
+            }
+        }
+        assistant.resetHistory()
+        persist()
+    }
+
+    fun deleteAllChats() {
+        val s = newSession()
+        sessions = listOf(s)
+        currentId = s.id
+        assistant.resetHistory()
+        persist()
+    }
+
+    /** Drops other conversations that were never used, so the sidebar stays tidy. */
+    private fun pruneEmpty() {
+        val keep = sessions.filter { it.id == currentId || it.messages.any { m -> m.fromUser } }
+        if (keep.size != sessions.size) sessions = keep
+    }
+
+    private fun push(msg: ChatMsg) {
+        sessions = sessions.map { if (it.id == currentId) it.copy(messages = it.messages + msg) else it }
+    }
+
+    private fun persist() {
+        val snapshot = sessions
+        viewModelScope.launch(Dispatchers.IO) { store.save(snapshot) }
+    }
+
+    private fun titleOf(text: String): String {
+        val one = text.replace(Regex("\\s+"), " ").trim()
+        return if (one.length <= 38) one else one.take(37).trimEnd() + "\u2026"
+    }
+
+    // ------------------------------------------------------------ talking
+
+    fun submit(text: String) {
+        val t = text.trim()
+        if (t.isEmpty() || busy) return
+        voice.stopSpeaking()
+        push(ChatMsg(t, true))
+        sessions = sessions.map {
+            if (it.id == currentId && it.title == NEW_CHAT_TITLE) it.copy(title = titleOf(t)) else it
+        }
+        persist()
+        busy = true
+        status = "Thinking..."
+        viewModelScope.launch {
+            val reply = withContext(Dispatchers.IO) {
+                try {
+                    assistant.respond(t)
+                } catch (e: Throwable) {
+                    "Sorry, something went wrong: ${e.message}"
+                }
+            }
+            push(ChatMsg(reply, false))
+            busy = false
+            status = if (modelReady) READY else ""
+            persist()
+            voice.speak(reply, speakOn)
+        }
+    }
+
+    fun startListening() = voice.listen()
+
+    // ------------------------------------------------------------ model
 
     fun refreshAccessibility() {
         a11yConnected = JarvisAccessibilityService.isConnected
@@ -103,7 +226,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             }
             if (err == null) {
                 modelReady = true
-                status = "Ready - running offline on your phone"
+                status = READY
             } else {
                 modelReady = false
                 status = "Model failed to load: $err"
@@ -127,29 +250,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun submit(text: String) {
-        val t = text.trim()
-        if (t.isEmpty() || busy) return
-        voice.stopSpeaking()
-        messages = messages + ChatMsg(t, true)
-        busy = true
-        status = "Thinking..."
-        viewModelScope.launch {
-            val reply = withContext(Dispatchers.IO) {
-                try {
-                    assistant.respond(t)
-                } catch (e: Throwable) {
-                    "Sorry, something went wrong: ${e.message}"
-                }
-            }
-            messages = messages + ChatMsg(reply, false)
-            busy = false
-            status = if (modelReady) "Ready - running offline on your phone" else ""
-            voice.speak(reply, speakOn)
-        }
-    }
-
-    fun startListening() = voice.listen()
+    // ------------------------------------------------------------ settings
 
     fun setSpeak(on: Boolean) {
         speakOn = on
@@ -192,8 +293,12 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearChat() {
-        messages = emptyList()
+        sessions = sessions.map {
+            if (it.id == currentId) it.copy(title = NEW_CHAT_TITLE, messages = listOf(ChatMsg(GREETING, false)))
+            else it
+        }
         assistant.resetHistory()
+        persist()
     }
 
     fun openSettings() {
