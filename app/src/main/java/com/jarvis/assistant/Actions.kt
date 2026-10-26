@@ -25,15 +25,29 @@ class Actions(private val ctx: Context, private val memory: Memory) {
 
     /** Returns the reply if the text was a command, or null if it is normal chat. */
     fun tryHandle(raw: String): String? {
-        val clean = raw.trim().trimEnd('.', '!', '?', ' ')
+        val clean = raw
+            .replace('’', '\'')
+            .replace('‘', '\'')
+            .replace('“', '"')
+            .replace('”', '"')
+            .trim()
+            .trim('"', '\'', ' ')
+            .trimEnd('.', '!', '?', ',', ' ')
+            .replace(Regex("\\s+"), " ")
         if (clean.isEmpty()) return null
         val t = clean.lowercase()
         val ic = RegexOption.IGNORE_CASE
 
         // ---- memory ----
-        Regex("^(?:please )?remember (?:that )?(.+)$", ic).find(clean)?.let {
-            memory.add(it.groupValues[1])
-            return "Got it, I'll remember that."
+        Regex(
+            "^(?:(?:hey |ok |okay )?jarvis[ ,]+)?(?:please )?" +
+                "(?:remember|note down|note|save|keep in mind|don'?t forget)" +
+                "(?: that| this)?[ ,:]+(.+)$",
+            ic
+        ).find(clean)?.let {
+            val fact = it.groupValues[1].trim()
+            memory.add(fact)
+            return "Got it, I'll remember: $fact."
         }
         Regex("^(?:hi,? |hello,? )?(?:my name is|call me)\\s+(.+)$", ic).find(clean)?.let {
             val name = it.groupValues[1].trim()
