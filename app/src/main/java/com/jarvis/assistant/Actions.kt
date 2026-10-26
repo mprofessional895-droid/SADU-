@@ -71,92 +71,114 @@ class Actions(
             return "Done. I've forgotten everything about you."
         }
 
-        // ---- accessibility / screen control ----
-        screenCommand(t)?.let { return it }
-
-        // ---- flashlight ----
-        if (t.contains("flashlight") || t.contains("torch")) {
-            val on = !(t.contains(" off") || t.contains("disable") || t.startsWith("off"))
-            return setTorch(on)
+        // ---- questions Jarvis can always answer, command or not ----
+        if (Regex("\\bwhat time\\b|\\bcurrent time\\b|^time$|\\bwhat'?s the time\\b").containsMatchIn(t)) {
+            return "It's " + SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()) + "."
+        }
+        if (Regex("\\bwhat(?:'s| is)? the date\\b|\\bwhat day is it\\b|\\btoday'?s date\\b").containsMatchIn(t)) {
+            return "Today is " + SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date()) + "."
+        }
+        if (Regex("\\bbattery\\b").containsMatchIn(t)) return battery()
+        if (Regex("\\b(read (?:the )?screen|what'?s on (?:the|my) screen|describe (?:the )?screen)\\b")
+                .containsMatchIn(t)
+        ) {
+            return readScreen()
         }
 
-        // ---- battery ----
-        if (Regex("b[ae]t+[a-z]{0,2}ry").containsMatchIn(t)) return battery()
+        // Everything past here actually touches the phone, so only run it when the
+        // message reads as a command. Otherwise hand it to the brain as conversation.
+        val cmd = CommandParser.commandText(clean) ?: return null
+
+        // ---- screen navigation ----
+        screenCommand(cmd)?.let { return it }
+
+        // ---- flashlight ----
+        if (cmd.contains("flashlight") || cmd.contains("torch")) {
+            val off = cmd.contains(" off") || cmd.contains("disable") ||
+                cmd.startsWith("off") || cmd.startsWith("turn off") || cmd.startsWith("switch off")
+            return setTorch(!off)
+        }
 
         // ---- volume ----
-        if (t.contains("volume") || t.contains("louder") || t.contains("quieter")) {
+        if (cmd.contains("volume") || cmd.contains("louder") || cmd.contains("quieter")) {
             val dir = when {
-                t.contains("unmute") -> "unmute"
-                t.contains("mute") -> "mute"
-                t.contains("down") || t.contains("lower") || t.contains("decrease") ||
-                    t.contains("reduce") || t.contains("quieter") -> "down"
+                cmd.contains("unmute") -> "unmute"
+                cmd.contains("mute") -> "mute"
+                cmd.contains("down") || cmd.contains("lower") || cmd.contains("decrease") ||
+                    cmd.contains("reduce") || cmd.contains("quieter") -> "down"
                 else -> "up"
             }
             return volume(dir)
         }
 
-        // ---- wifi / bluetooth ----
-        if (t.contains("wifi") || t.contains("wi-fi") || t.contains("wi fi")) {
-            return if (go(Intent(Settings.ACTION_WIFI_SETTINGS))) {
-                "Opening Wi-Fi settings. Android doesn't let apps flip the switch, so tap it yourself."
-            } else "I couldn't open Wi-Fi settings."
-        }
-        if (t.contains("bluetooth")) {
-            return if (go(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))) {
-                "Opening Bluetooth settings. Android doesn't let apps flip the switch, so tap it yourself."
-            } else "I couldn't open Bluetooth settings."
-        }
-
-        // ---- time / date ----
-        if (t.contains("what time") || t == "time" || t.contains("current time")) {
-            return "It's " + SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()) + "."
-        }
-        if (t.contains("the date") || t.contains("what day") || t.contains("today's date")) {
-            return "Today is " + SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date()) + "."
+        // ---- wifi / bluetooth settings ----
+        val radio = Regex("^(open|show|go to|turn on|turn off|enable|disable|connect)\\b.*\\b(wifi|wi-fi|wi fi|bluetooth)\\b")
+            .containsMatchIn(cmd) || Regex("^(wifi|wi-fi|wi fi|bluetooth)$").containsMatchIn(cmd)
+        if (radio) {
+            return if (cmd.contains("bluetooth")) {
+                if (go(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))) {
+                    "Opening Bluetooth settings. Android doesn't let apps flip the switch, so tap it yourself."
+                } else "I couldn't open Bluetooth settings."
+            } else {
+                if (go(Intent(Settings.ACTION_WIFI_SETTINGS))) {
+                    "Opening Wi-Fi settings. Android doesn't let apps flip the switch, so tap it yourself."
+                } else "I couldn't open Wi-Fi settings."
+            }
         }
 
         // ---- alarm ----
-        if (t.contains("alarm") || t.startsWith("wake me")) {
-            Regex("(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?").find(t)?.let {
+        if (cmd.contains("alarm") || cmd.startsWith("wake me")) {
+            Regex("(\\d{1,2})(?:[:.](\\d{2}))?\\s*(a\\.?m\\.?|p\\.?m\\.?)?").find(cmd)?.let {
                 return setAlarm(it.value)
             }
             return "What time should I set it for? For example: set an alarm for 6:30 am."
         }
 
-        // ---- install app (internet) ----
-        Regex("^(?:please )?(?:install|download)\\s+(?:the\\s+)?(?:app\\s+)?(.+)$", ic).find(clean)?.let {
+        // ---- install an app ----
+        Regex("^(?:install|download)\\s+(?:the\\s+)?(?:app\\s+)?(.+)$").find(cmd)?.let {
             return installApp(it.groupValues[1])
         }
 
-        // ---- web search / open url ----
-        Regex("^(?:please )?(?:search|google|look up|search the web for|search for)\\s+(.+)$", ic)
-            .find(clean)?.let { return webSearch(it.groupValues[1]) }
-        Regex("^(?:please )?(?:open|go to)\\s+((?:https?://|www\\.).+)$", ic).find(clean)?.let {
+        // ---- web search / open a link ----
+        Regex("^(?:search|google|look up|search the web for|search for)\\s+(.+)$").find(cmd)?.let {
+            return webSearch(it.groupValues[1])
+        }
+        Regex("^(?:open|go to)\\s+((?:https?://|www\\.)\\S+)$").find(cmd)?.let {
             return openUrl(it.groupValues[1])
         }
 
         // ---- send a message ----
         val sms = Regex(
-            "^(?:please )?(?:send|write)\\s+(?:a\\s+)?(?:message|text|sms)\\s+to\\s+(.+?)(?:\\s+(?:saying|that says|say|with message)\\s+(.+))?$",
-            ic
-        ).find(clean) ?: Regex(
-            "^(?:please )?(?:text|message|sms)\\s+(.+?)(?:\\s+(?:saying|that says|say)\\s+(.+))?$",
-            ic
-        ).find(clean)
-        if (sms != null) return sendSms(sms.groupValues[1], sms.groupValues[2])
-
-        // ---- call ----
-        Regex("^(?:please )?(?:call|phone|dial|ring)\\s+(.+)$", ic).find(clean)?.let {
-            return call(it.groupValues[1])
+            "^(?:send|write)\\s+(?:a\\s+)?(?:message|text|sms)\\s+to\\s+(.+?)(?:\\s+(?:saying|that says|say|with message)\\s+(.+))?$"
+        ).find(cmd) ?: Regex(
+            "^(?:text|message|sms)\\s+(.+?)(?:\\s+(?:saying|that says|say)\\s+(.+))?$"
+        ).find(cmd)
+        if (sms != null) {
+            val who = sms.groupValues[1].trim()
+            if (CommandParser.isRealTarget(who)) return sendSms(who, sms.groupValues[2])
         }
 
-        // ---- open an app ----
-        Regex("^(?:please )?(?:open|launch|start)\\s+(?:the\\s+)?(.+?)(?:\\s+app)?$", ic).find(clean)?.let {
-            return openApp(it.groupValues[1])
+        // ---- call ----
+        Regex("^(?:call|phone|dial|ring)\\s+(.+)$").find(cmd)?.let {
+            val who = it.groupValues[1].trim()
+            if (CommandParser.isRealTarget(who) && findContact(who) != null) return call(who)
+        }
+
+        // ---- open an app (only if we really recognise one) ----
+        Regex("^(?:open|launch|start)\\s+(?:the\\s+)?(.+?)(?:\\s+app)?$").find(cmd)?.let {
+            val name = it.groupValues[1].trim()
+            if (CommandParser.isRealTarget(name)) {
+                resolveApp(name)?.let { (handle, label) ->
+                    return if (go(handle)) "Opening $label." else "I couldn't open $label."
+                }
+            }
         }
 
         // ---- play something ----
-        Regex("^(?:please )?play\\s+(.+)$", ic).find(clean)?.let { return play(it.groupValues[1]) }
+        Regex("^play\\s+(.+)$").find(cmd)?.let {
+            val q = it.groupValues[1].trim()
+            if (CommandParser.isRealTarget(q)) return play(q)
+        }
 
         return null
     }
@@ -164,28 +186,29 @@ class Actions(
     // ------------------------------------------------------------ screen control
 
     private fun screenCommand(t: String): String? {
-        if (Regex("\\b(go back|press back|navigate back)\\b").containsMatchIn(t)) {
-            return accessibilityAction("back", null)
+        val nav = Regex(
+            "\\b(go back|press back|navigate back|go home|press home|home screen|" +
+                "recent apps|show recents|app switcher|scroll down|scroll up)\\b"
+        )
+        if (nav.containsMatchIn(t)) {
+            val action = when {
+                t.contains("back") -> "back"
+                t.contains("home") -> "home"
+                t.contains("recent") || t.contains("switcher") -> "recents"
+                t.contains("down") -> "scroll_down"
+                else -> "scroll_up"
+            }
+            return accessibilityAction(action, null)
         }
-        if (Regex("\\b(go home|press home|home screen)\\b").containsMatchIn(t)) {
-            return accessibilityAction("home", null)
+        Regex("^tap (?:on )?(.+)$").find(t)?.let {
+            val label = it.groupValues[1].trim()
+            if (label.isNotBlank() && label.split(" ").size <= 6) {
+                return accessibilityAction("tap", label)
+            }
         }
-        if (Regex("\\b(recent apps|show recents|app switcher)\\b").containsMatchIn(t)) {
-            return accessibilityAction("recents", null)
-        }
-        if (Regex("\\b(read (?:the )?screen|what'?s on (?:the )?screen|describe (?:the )?screen)\\b")
-                .containsMatchIn(t)
-        ) {
-            return accessibilityAction("read_screen", null)
-        }
-        if (Regex("\\bscroll (?:down|up)\\b").containsMatchIn(t)) {
-            return accessibilityAction(if (t.contains("down")) "scroll_down" else "scroll_up", null)
-        }
-        Regex("^\\s*(?:please )?tap (?:on )?(.+)$", RegexOption.IGNORE_CASE).find(t)?.let {
-            return accessibilityAction("tap", it.groupValues[1].trim())
-        }
-        Regex("^\\s*(?:please )?type (?:the text |this )?(.+)$", RegexOption.IGNORE_CASE).find(t)?.let {
-            return accessibilityAction("type", it.groupValues[1].trim())
+        Regex("^type (?:the text |this )?(.+)$").find(t)?.let {
+            val text = it.groupValues[1].trim()
+            if (text.isNotBlank()) return accessibilityAction("type", text)
         }
         return null
     }
@@ -312,6 +335,12 @@ class Actions(
     }
 
     fun openApp(name: String): String {
+        val (handle, label) = resolveApp(name) ?: return "I couldn't find an app called \"$name\"."
+        return if (go(handle)) "Opening $label." else "I couldn't open $label."
+    }
+
+    /** Finds an installed app by name. Returns its launch intent and label, or null. */
+    private fun resolveApp(name: String): Pair<Intent, String>? {
         val pm = ctx.packageManager
         val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         val apps = pm.queryIntentActivities(main, 0)
@@ -320,10 +349,9 @@ class Actions(
         val hit = apps.firstOrNull { it.first.lowercase() == q }
             ?: apps.firstOrNull { it.first.lowercase().contains(q) }
             ?: apps.firstOrNull { it.first.length > 2 && q.contains(it.first.lowercase()) }
-            ?: return "I couldn't find an app called \"$name\"."
-        val li = pm.getLaunchIntentForPackage(hit.second)
-            ?: return "I found ${hit.first} but couldn't open it."
-        return if (go(li)) "Opening ${hit.first}." else "I couldn't open ${hit.first}."
+            ?: return null
+        val li = pm.getLaunchIntentForPackage(hit.second) ?: return null
+        return li to hit.first
     }
 
     fun play(query: String): String {
