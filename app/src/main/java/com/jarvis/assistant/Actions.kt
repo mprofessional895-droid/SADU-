@@ -4,7 +4,11 @@ import android.Manifest
 import android.app.SearchManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.media.AudioManager
+import android.os.BatteryManager
+import android.provider.Settings
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.net.Uri
@@ -73,6 +77,32 @@ class Actions(private val ctx: Context, private val memory: Memory) {
             return setTorch(on)
         }
 
+        // ---- battery (also matches common typos like "bettry") ----
+        if (Regex("b[ae]t+[a-z]{0,2}ry").containsMatchIn(t)) {
+            return batteryReply()
+        }
+
+        // ---- volume ----
+        if (t.contains("volume") || t.contains("louder") || t.contains("quieter")) {
+            return volume(t)
+        }
+
+        // ---- wifi / bluetooth (Android only lets the user flip these switches) ----
+        if (t.contains("wifi") || t.contains("wi-fi") || t.contains("wi fi")) {
+            return if (go(Intent(Settings.ACTION_WIFI_SETTINGS))) {
+                "Opening Wi-Fi settings. Android doesn't let apps flip the switch, so tap it yourself."
+            } else {
+                "I couldn't open Wi-Fi settings."
+            }
+        }
+        if (t.contains("bluetooth")) {
+            return if (go(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))) {
+                "Opening Bluetooth settings. Android doesn't let apps flip the switch, so tap it yourself."
+            } else {
+                "I couldn't open Bluetooth settings."
+            }
+        }
+
         // ---- time and date ----
         if (t.contains("what time") || t == "time" || t.contains("current time")) {
             return "It's " + SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()) + "."
@@ -117,6 +147,41 @@ class Actions(private val ctx: Context, private val memory: Memory) {
     }
 
     // ------------------------------------------------------------------
+
+    private fun batteryReply(): String = try {
+        val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val pct = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        val st = ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val status = st?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL
+        "Your battery is at $pct%" + if (charging) " and charging." else "."
+    } catch (e: Exception) {
+        "I couldn't read the battery: ${e.message}"
+    }
+
+    private fun volume(t: String): String = try {
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val dir = when {
+            t.contains("unmute") -> AudioManager.ADJUST_UNMUTE
+            t.contains("mute") -> AudioManager.ADJUST_MUTE
+            t.contains("down") || t.contains("lower") || t.contains("decrease") ||
+                t.contains("reduce") || t.contains("quieter") -> AudioManager.ADJUST_LOWER
+            else -> AudioManager.ADJUST_RAISE
+        }
+        val times = if (dir == AudioManager.ADJUST_LOWER || dir == AudioManager.ADJUST_RAISE) 3 else 1
+        repeat(times) {
+            am.adjustStreamVolume(AudioManager.STREAM_MUSIC, dir, AudioManager.FLAG_SHOW_UI)
+        }
+        when (dir) {
+            AudioManager.ADJUST_LOWER -> "Volume down."
+            AudioManager.ADJUST_MUTE -> "Muted."
+            AudioManager.ADJUST_UNMUTE -> "Unmuted."
+            else -> "Volume up."
+        }
+    } catch (e: Exception) {
+        "I couldn't change the volume: ${e.message}"
+    }
 
     private fun go(i: Intent): Boolean = try {
         ctx.startActivity(i)

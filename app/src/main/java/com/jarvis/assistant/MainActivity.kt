@@ -274,6 +274,7 @@ class MainActivity : AppCompatActivity() {
                 fun clean(s: String) = s
                     .replace("<end_of_turn>", "")
                     .replace("<eos>", "")
+                    .substringBefore("\nUser:")
                     .trim()
                     .removePrefix("Jarvis:")
                     .trim()
@@ -293,15 +294,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildPlainPrompt(userText: String): String {
-        val sb = StringBuilder(
-            "You are Jarvis, the user's warm, friendly personal assistant and close friend, " +
-                "running privately on their phone. Talk casually like a friend. " +
-                "Keep answers short: 1 to 3 sentences. Reply in the same language the user uses."
-        )
+    private val persona =
+        "You are Jarvis, a friendly, helpful assistant and friend of the user, running privately on their phone. " +
+            "Reply naturally and briefly, in the same language the user uses. " +
+            "Never claim to do or check things on the phone yourself."
+
+    private val personalWords =
+        Regex("\\b(my|me|i|i'm|i am|mine|favou?rite|remember|know|name)\\b", RegexOption.IGNORE_CASE)
+
+    /** Saved facts are only shown to the AI when the message is about the user, so they don't distract it. */
+    private fun personaFor(userText: String): String {
         val facts = memory.asContext()
-        if (facts.isNotEmpty()) sb.append(" Things you know about the user: ").append(facts).append(".")
-        sb.append("\n\n")
+        return if (facts.isNotEmpty() && personalWords.containsMatchIn(userText)) {
+            "$persona What you know about the user: $facts."
+        } else {
+            persona
+        }
+    }
+
+    private fun buildPlainPrompt(userText: String): String {
+        val sb = StringBuilder(personaFor(userText)).append("\n\n")
         for ((u, a) in history.takeLast(2)) {
             sb.append("User: ").append(u.take(200)).append("\n")
             sb.append("Jarvis: ").append(a.take(200)).append("\n")
@@ -311,20 +323,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildPrompt(userText: String): String {
-        val persona = StringBuilder(
-            "You are Jarvis, the user's warm, friendly personal assistant and close friend, " +
-                "running privately on their phone. Talk casually like a friend. " +
-                "Keep answers short: 1 to 3 sentences. Reply in the same language the user uses."
-        )
-        val facts = memory.asContext()
-        if (facts.isNotEmpty()) persona.append(" Things you know about the user: ").append(facts).append(".")
-
         val sb = StringBuilder()
         var first = true
         fun userTurn(t: String) {
             sb.append("<start_of_turn>user\n")
             if (first) {
-                sb.append(persona).append("\n\n")
+                sb.append(personaFor(userText)).append("\n\n")
                 first = false
             }
             sb.append(t).append("<end_of_turn>\n")

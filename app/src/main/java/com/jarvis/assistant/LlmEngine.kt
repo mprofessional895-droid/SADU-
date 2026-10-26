@@ -3,6 +3,7 @@ package com.jarvis.assistant
 import android.content.Context
 import android.net.Uri
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
+import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import java.io.File
 
 /** Runs the Gemma model on the phone. No internet needed. */
@@ -24,9 +25,24 @@ class LlmEngine(private val ctx: Context) {
         llm = LlmInference.createFromOptions(ctx, options)
     }
 
+    /**
+     * One fresh chat session per reply, with Google's recommended Gemma sampling
+     * (top-k 64, top-p 0.95) and a calm temperature so a small model stays on topic.
+     */
     fun generate(prompt: String): String {
         val engine = llm ?: throw IllegalStateException("Model is not loaded yet")
-        return engine.generateResponse(prompt)
+        val opts = LlmInferenceSession.LlmInferenceSessionOptions.builder()
+            .setTopK(64)
+            .setTopP(0.95f)
+            .setTemperature(0.8f)
+            .build()
+        val session = LlmInferenceSession.createFromOptions(engine, opts)
+        try {
+            session.addQueryChunk(prompt)
+            return session.generateResponse()
+        } finally {
+            session.close()
+        }
     }
 
     /** Copies the chosen model file into the app's private storage (one time). */
