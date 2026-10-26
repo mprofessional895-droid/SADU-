@@ -20,8 +20,11 @@ The in-app model is a Gemma 3 1B `.task` file the user imports once into app sto
 ## Module map (`app/src/main/java/com/jarvis/assistant/`)
 
 - `MainActivity.kt` - entry point; requests permissions; hosts the Compose UI.
-- `JarvisViewModel.kt` - all UI state: chat, toggles, model load/import, voice wiring.
-- `ui/` - Compose UI: `ChatScreen.kt` (chat + orb + toggles), `SettingsScreen.kt`, `Theme.kt`.
+- `JarvisViewModel.kt` - all UI state: conversations, toggles, model load/import, voice wiring.
+- `ChatHistory.kt` - saves every conversation to `filesDir/chats.json` for the sidebar.
+- `ReplyText.kt` - cleans raw model output (literal `\n`, prompt tokens, code fences).
+- `ui/` - Compose UI: `ChatScreen.kt` (chat + drawer + typing dots), `JarvisDrawer.kt` (sidebar),
+  `MarkdownText.kt` (renders bold/headings/bullets), `SettingsScreen.kt`, `JarvisOrb.kt`, `Theme.kt`.
 - `Assistant.kt` - the router: rules first, then the brain (JSON tool-calling or chat).
 - `Tools.kt` - tool specs + dispatch; the AI's list of abilities.
 - `Actions.kt` - what actually touches the phone (rules, intents, SMS, calls, torch, screen control).
@@ -36,6 +39,10 @@ The in-app model is a Gemma 3 1B `.task` file the user imports once into app sto
 - SMS asks to confirm and calls open the dialer first, unless the user changes Settings.
 - Accessibility control only acts when the user gives a command.
 - Keep `Brain` as the swap point for cloud/hybrid; do not shortcut it.
+- All model output goes through `ReplyText.clean()` before it is stored or shown. Small models
+  copy the JSON escaping from the tool-call examples and emit literal `\n`, so never trust raw text.
+- `JarvisViewModel.sessions` is the single source of truth for conversations; `messages` is derived.
+- Tests: `gradle testDebugUnitTest` (`CommandParserTest`, `ReplyTextTest`).
 
 ## CI
 

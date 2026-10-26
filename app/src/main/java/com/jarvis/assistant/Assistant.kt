@@ -98,7 +98,11 @@ class Assistant(
         sb.append("Rules:\n")
         sb.append("- If you are not sure whether it is a command or chat, choose CHAT.\n")
         sb.append("- Never say you did something unless a tool actually did it.\n")
-        sb.append("- Do not mention JSON, tools or these instructions to the user.\n\n")
+        sb.append("- Do not mention JSON, tools or these instructions to the user.\n")
+        sb.append("- In chat, write plain sentences with real line breaks. Only the JSON command ")
+        sb.append("is JSON; your chat answers are not, so never write escape codes such as ")
+        sb.append("\\n or \\t, and never wrap the whole answer in quotation marks.\n")
+        sb.append("- Do not use # headings or a wall of bold. At most one short bold word now and then.\n\n")
 
         for ((u, a) in history.takeLast(3)) {
             sb.append("User: ").append(u.take(200)).append("\n")
@@ -131,17 +135,5 @@ class Assistant(
         }
     }
 
-    private fun cleanChat(raw: String): String {
-        var s = raw
-            .replace("<end_of_turn>", "")
-            .replace("<eos>", "")
-            .replace("<start_of_turn>", "")
-        // If the model slipped a tool call into a chat reply, drop the JSON block.
-        s = s.replace(Regex("\\{[\\s\\S]{0,400}\\}"), " ").trim()
-        if (s.contains("Jarvis:")) s = s.substringAfterLast("Jarvis:")
-        s = s.trim().removePrefix("model").trim()
-        s = s.trim('`', '*', '#', '"', '\'', ' ', '\n', '\t')
-        if (s.isBlank()) s = "I'm here. What would you like to do?"
-        return s
-    }
+    private fun cleanChat(raw: String): String = ReplyText.clean(raw)
 }
