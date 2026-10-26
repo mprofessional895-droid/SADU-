@@ -36,7 +36,7 @@ class LlmEngine(private val ctx: Context) {
         val opts = LlmInferenceSession.LlmInferenceSessionOptions.builder()
             .setTopK(64)
             .setTopP(0.95f)
-            .setTemperature(0.8f)
+            .setTemperature(0.6f)
             .build()
         val session = LlmInferenceSession.createFromOptions(engine, opts)
         try {
