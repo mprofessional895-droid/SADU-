@@ -2,6 +2,7 @@ package com.jarvis.assistant
 
 import com.jarvis.assistant.brain.Brain
 import org.json.JSONObject
+import java.util.Locale
 
 /**
  * The router. For every message it:
@@ -14,6 +15,8 @@ class Assistant(
     private val actions: Actions,
     private val memory: Memory,
     private val tools: Tools,
+    /** Reply language tag, or "auto" to follow the phone. */
+    private val language: () -> String = { "auto" },
 ) {
     private val history = ArrayList<Pair<String, String>>()
 
@@ -64,6 +67,12 @@ class Assistant(
         sb.append("You are Jarvis, a warm, capable assistant running privately on the user's Android phone. ")
         sb.append("Talk like a helpful friend. Keep replies short, one to three sentences, ")
         sb.append("and answer in the same language the user uses.\n\n")
+
+        val tag = language()
+        if (tag != "auto" && tag.isNotBlank()) {
+            val name = Locale.forLanguageTag(tag).displayLanguage
+            if (name.isNotBlank()) sb.append("Always write your reply in ").append(name).append(".\n\n")
+        }
 
         sb.append("You have two modes:\n")
         sb.append("1. CHAT - if the user is chatting, asking a question, or just talking, reply with plain words. ")

@@ -11,8 +11,8 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.4"
+        versionCode = 5
+        versionName = "0.5"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -28,6 +28,14 @@ android {
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+
+    testOptions {
+        unitTests {
+            // Robolectric needs the app's resources to render Compose off-device
+            isIncludeAndroidResources = true
+            all { it.systemProperty("roborazzi.test.record", "true") }
+        }
+    }
 }
 
 dependencies {
@@ -39,6 +47,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
@@ -50,4 +59,13 @@ dependencies {
     implementation("com.google.mediapipe:tasks-genai:0.10.27")
 
     testImplementation("junit:junit:4.13.2")
+
+    // Renders the real Compose UI to PNG on the JVM, so the design can be checked
+    // without a device or emulator.
+    testImplementation("org.robolectric:robolectric:4.12.2")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.11.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.11.0")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

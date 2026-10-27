@@ -27,4 +27,12 @@ class Prefs(ctx: Context) {
     var directCall: Boolean
         get() = p.getBoolean("direct_call", false)
         set(v) = p.edit().putBoolean("direct_call", v).apply()
+
+    /**
+     * Reply language for speech and for the model prompt.
+     * "auto" follows the phone's own language.
+     */
+    var language: String
+        get() = p.getString("language", "auto") ?: "auto"
+        set(v) = p.edit().putString("language", v).apply()
 }

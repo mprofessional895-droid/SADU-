@@ -14,6 +14,11 @@ class LlmEngine(private val ctx: Context) {
 
     fun isModelPresent(): Boolean = modelFile.exists() && modelFile.length() > 50_000_000L
 
+    /** Size of the imported model on disk, for the status screen. */
+    fun modelBytes(): Long = runCatching {
+        if (modelFile.exists()) modelFile.length() else 0L
+    }.getOrDefault(0L)
+
     val isLoaded: Boolean get() = llm != null
 
     @Synchronized
