@@ -48,7 +48,7 @@
         android:allowBackup="false"
         android:label="@string/app_name"
         android:largeHeap="true"
-        android:theme="@style/Theme.AppCompat.NoActionBar">
+        android:theme="@style/Theme.Jarvis">
 
         <uses-native-library
             android:name="libOpenCL.so"

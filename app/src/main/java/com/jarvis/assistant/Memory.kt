@@ -21,6 +21,16 @@ class Memory(ctx: Context) {
         save(facts().filterNot { it.startsWith("The user's name is") } + "The user's name is ${name.trim()}")
     }
 
+    fun remove(fact: String) {
+        save(facts() - fact)
+    }
+
+    fun update(old: String, new: String) {
+        val cleaned = new.replace("\n", " ").trim()
+        if (cleaned.isEmpty()) return
+        save(facts().map { if (it == old) cleaned else it })
+    }
+
     fun clear() {
         prefs.edit().remove("facts").apply()
     }

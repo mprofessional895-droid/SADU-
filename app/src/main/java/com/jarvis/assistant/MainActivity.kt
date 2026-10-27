@@ -1,17 +1,16 @@
 package com.jarvis.assistant
 
-import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.jarvis.assistant.ui.JarvisApp
-import com.jarvis.assistant.ui.JarvisTheme
 
 class MainActivity : AppCompatActivity() {
 
@@ -19,28 +18,33 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_WAKE = "wake"
     }
 
+    private val vm: JarvisViewModel by viewModels()
     private val wake = mutableStateOf(false)
 
     private val perms = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { }
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { vm.refreshRuntime() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
-            JarvisTheme {
-                val vm: JarvisViewModel = viewModel()
-                LaunchedEffect(wake.value) {
-                    if (wake.value) {
-                        vm.startListening()
-                        wake.value = false
-                    }
+            LaunchedEffect(wake.value) {
+                if (wake.value) {
+                    vm.wakeUp()
+                    wake.value = false
                 }
-                JarvisApp(vm)
             }
+            JarvisApp(vm)
         }
         requestPermissions()
         if (intent?.getBooleanExtra(EXTRA_WAKE, false) == true) wake.value = true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Permissions and screen control can change while the app is in the background.
+        vm.refreshRuntime()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -49,15 +53,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestPermissions() {
-        val list = mutableListOf(
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.READ_CONTACTS,
-            Manifest.permission.CALL_PHONE,
-            Manifest.permission.SEND_SMS,
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            list.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        perms.launch(list.toTypedArray())
+        val list = PhoneActionCatalog.runtimePermissions(Build.VERSION.SDK_INT)
+        if (list.isNotEmpty()) perms.launch(list.toTypedArray())
     }
 }
