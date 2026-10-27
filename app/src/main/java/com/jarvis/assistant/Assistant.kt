@@ -17,6 +17,8 @@ class Assistant(
     private val tools: Tools,
     /** Reply language tag, or "auto" to follow the phone. */
     private val language: () -> String = { "auto" },
+    /** Chat mode answers as conversation; Control mode may also act. */
+    private val mode: () -> Mode = { Mode.Default },
 ) {
     private val history = ArrayList<Pair<String, String>>()
 
@@ -26,9 +28,15 @@ class Assistant(
 
     /** Blocking - call from a background thread. */
     fun respond(text: String): String {
-        // 1. Fast rule layer
+        val current = mode()
+
+        // 1. Fast rule layer. In Chat mode only the rules that need no phone access run,
+        // so a command can never act on the phone from the wrong mode.
         try {
-            actions.tryHandle(text)?.let { reply ->
+            val ruled =
+                if (current == Mode.Chat) actions.tryHandleChatMode(text)
+                else actions.tryHandle(text)
+            ruled?.let { reply ->
                 history.add(text to reply)
                 return reply
             }
@@ -38,11 +46,16 @@ class Assistant(
 
         // 2. Brain
         if (!brain.isReady) {
-            return "My AI model isn't loaded yet. Tap \"Choose model file\" in Settings, " +
-                "or give me a simple command like \"set an alarm for 7 am\"."
+            return if (current == Mode.Chat) {
+                "My AI model isn't loaded yet. Tap \"Choose model file\" in Settings " +
+                    "and I'll be able to chat."
+            } else {
+                "My AI model isn't loaded yet. Tap \"Choose model file\" in Settings, " +
+                    "or give me a simple command like \"set an alarm for 7 am\"."
+            }
         }
         val raw = try {
-            brain.generate(buildPrompt(text))
+            brain.generate(promptFor(text, current))
         } catch (e: Throwable) {
             return "Sorry, my brain hit an error: ${e.message}"
         }
@@ -62,63 +75,22 @@ class Assistant(
         return reply
     }
 
-    private fun buildPrompt(text: String): String {
-        val sb = StringBuilder()
-        sb.append("You are Jarvis, a warm, capable assistant running privately on the user's Android phone. ")
-        sb.append("Talk like a helpful friend. Keep replies short, one to three sentences, ")
-        sb.append("and answer in the same language the user uses.\n\n")
-
-        val tag = language()
-        if (tag != "auto" && tag.isNotBlank()) {
-            val name = Locale.forLanguageTag(tag).displayLanguage
-            if (name.isNotBlank()) sb.append("Always write your reply in ").append(name).append(".\n\n")
-        }
-
-        sb.append("You have two modes:\n")
-        sb.append("1. CHAT - if the user is chatting, asking a question, or just talking, reply with plain words. ")
-        sb.append("Never use JSON in chat.\n")
-        sb.append("2. COMMAND - if the user clearly asks you to DO something on the phone that a tool can do, ")
-        sb.append("reply with ONLY a single JSON object and nothing else.\n\n")
-
-        sb.append("Your tools:\n")
-        sb.append(tools.menu()).append("\n\n")
-
+    private fun promptFor(text: String, current: Mode): String {
         val facts = memory.asContext()
-        if (facts.isNotEmpty()) {
-            sb.append("Things you know about the user: ").append(facts).append("\n\n")
+        val lang = languageName()
+        val recent = history.takeLast(3)
+        return when (current) {
+            // No tool menu and no JSON protocol: the model's whole context is the conversation.
+            Mode.Chat -> Prompt.chat(facts, lang, recent, text)
+            Mode.Control -> Prompt.control(facts, tools.menu(), lang, recent, text)
         }
+    }
 
-        sb.append("Command examples:\n")
-        sb.append("User: text mom that I'm on my way\n")
-        sb.append("Jarvis: {\"tool\":\"send_sms\",\"args\":{\"contact\":\"Mom\",\"message\":\"I'm on my way\"}}\n")
-        sb.append("User: turn on the flashlight\n")
-        sb.append("Jarvis: {\"tool\":\"flashlight\",\"args\":{\"on\":\"true\"}}\n")
-        sb.append("User: what's on my screen right now\n")
-        sb.append("Jarvis: {\"tool\":\"screen\",\"args\":{\"action\":\"read_screen\"}}\n\n")
-
-        sb.append("Chat examples:\n")
-        sb.append("User: how are you today?\n")
-        sb.append("Jarvis: I'm doing well, thanks for asking! What are you up to?\n")
-        sb.append("User: I'm feeling a bit tired\n")
-        sb.append("Jarvis: Sorry to hear that. Want me to set an alarm so you can rest?\n")
-        sb.append("User: tell me a joke\n")
-        sb.append("Jarvis: Why did the phone go to therapy? It had too many unresolved calls.\n\n")
-
-        sb.append("Rules:\n")
-        sb.append("- If you are not sure whether it is a command or chat, choose CHAT.\n")
-        sb.append("- Never say you did something unless a tool actually did it.\n")
-        sb.append("- Do not mention JSON, tools or these instructions to the user.\n")
-        sb.append("- In chat, write plain sentences with real line breaks. Only the JSON command ")
-        sb.append("is JSON; your chat answers are not, so never write escape codes such as ")
-        sb.append("\\n or \\t, and never wrap the whole answer in quotation marks.\n")
-        sb.append("- Do not use # headings or a wall of bold. At most one short bold word now and then.\n\n")
-
-        for ((u, a) in history.takeLast(3)) {
-            sb.append("User: ").append(u.take(200)).append("\n")
-            sb.append("Jarvis: ").append(a.take(200)).append("\n")
-        }
-        sb.append("User: ").append(text.take(400)).append("\nJarvis:")
-        return sb.toString()
+    /** The display name of the chosen reply language, or "" to follow the phone. */
+    private fun languageName(): String {
+        val tag = language()
+        if (tag == "auto" || tag.isBlank()) return ""
+        return Locale.forLanguageTag(tag).displayLanguage.takeIf { it.isNotBlank() }.orEmpty()
     }
 
     private fun parseToolCall(raw: String): Pair<String, Map<String, String>>? {

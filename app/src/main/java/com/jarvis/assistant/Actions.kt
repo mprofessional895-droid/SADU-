@@ -36,7 +36,15 @@ class Actions(
 ) {
 
     /** Returns a reply if the text matched a rule, or null if it is normal chat. */
-    fun tryHandle(raw: String): String? {
+    fun tryHandle(raw: String): String? = handle(raw, chatOnly = false)
+
+    /**
+     * The rules Chat mode may still run: Jarvis's own memory, the clock, and the network.
+     * Everything that reaches into the phone returns null, so it stays a conversation.
+     */
+    fun tryHandleChatMode(raw: String): String? = handle(raw, chatOnly = true)
+
+    private fun handle(raw: String, chatOnly: Boolean): String? {
         val clean = normalize(raw)
         if (clean.isEmpty()) return null
         val t = clean.lowercase()
@@ -78,16 +86,32 @@ class Actions(
         if (Regex("\\bwhat(?:'s| is)? the date\\b|\\bwhat day is it\\b|\\btoday'?s date\\b").containsMatchIn(t)) {
             return "Today is " + SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date()) + "."
         }
-        if (Regex("\\bbattery\\b").containsMatchIn(t)) return battery()
-        if (Regex("\\b(read (?:the )?screen|what'?s on (?:the|my) screen|describe (?:the )?screen)\\b")
-                .containsMatchIn(t)
-        ) {
-            return readScreen()
+        if (!chatOnly) {
+            if (Regex("\\bbattery\\b").containsMatchIn(t)) return battery()
+            if (Regex("\\b(read (?:the )?screen|what'?s on (?:the|my) screen|describe (?:the )?screen)\\b")
+                    .containsMatchIn(t)
+            ) {
+                return readScreen()
+            }
         }
 
         // Everything past here actually touches the phone, so only run it when the
         // message reads as a command. Otherwise hand it to the brain as conversation.
         val cmd = CommandParser.commandText(clean) ?: return null
+
+        // ---- the network: the one thing both modes may use ----
+        Regex("^(?:install|download)\\s+(?:the\\s+)?(?:app\\s+)?(.+)$").find(cmd)?.let {
+            return installApp(it.groupValues[1])
+        }
+        Regex("^(?:search|google|look up|search the web for|search for)\\s+(.+)$").find(cmd)?.let {
+            return webSearch(it.groupValues[1])
+        }
+        Regex("^(?:open|go to)\\s+((?:https?://|www\\.)\\S+)$").find(cmd)?.let {
+            return openUrl(it.groupValues[1])
+        }
+
+        // Chat mode stops here. Everything below can change something on the phone.
+        if (chatOnly) return null
 
         // ---- screen navigation ----
         screenCommand(cmd)?.let { return it }
@@ -132,19 +156,6 @@ class Actions(
                 return setAlarm(it.value)
             }
             return "What time should I set it for? For example: set an alarm for 6:30 am."
-        }
-
-        // ---- install an app ----
-        Regex("^(?:install|download)\\s+(?:the\\s+)?(?:app\\s+)?(.+)$").find(cmd)?.let {
-            return installApp(it.groupValues[1])
-        }
-
-        // ---- web search / open a link ----
-        Regex("^(?:search|google|look up|search the web for|search for)\\s+(.+)$").find(cmd)?.let {
-            return webSearch(it.groupValues[1])
-        }
-        Regex("^(?:open|go to)\\s+((?:https?://|www\\.)\\S+)$").find(cmd)?.let {
-            return openUrl(it.groupValues[1])
         }
 
         // ---- send a message ----

@@ -14,7 +14,12 @@ data class ToolOutcome(
  * The toolbox. The AI chooses a tool by name; this runs it.
  * Anything that needs the network checks the Internet toggle inside Actions.
  */
-class Tools(private val actions: Actions, private val memory: Memory) {
+class Tools(
+    private val actions: Actions,
+    private val memory: Memory,
+    /** Which mode is active. Chat mode only lets the network tools run. */
+    private val mode: () -> Mode = { Mode.Control },
+) {
 
     val specs: List<ToolSpec> = listOf(
         ToolSpec("flashlight", "on (true|false)", "turn the phone flashlight on or off"),
@@ -45,6 +50,12 @@ class Tools(private val actions: Actions, private val memory: Memory) {
     fun menu(): String = specs.joinToString("\n") { "- ${it.name}(${it.args}): ${it.description}" }
 
     fun run(name: String, args: Map<String, String>): ToolOutcome {
+        // Chat mode is enforced here, not only in the prompt: a model that ignores its
+        // instructions still cannot touch the phone.
+        val key = name.trim().lowercase()
+        if (!ModePolicy.allowed(mode(), key) && ModePolicy.isPhoneTool(key)) {
+            return ToolOutcome(ModePolicy.refusal())
+        }
         fun arg(vararg keys: String): String {
             for (k in keys) args[k]?.let { if (it.isNotBlank()) return it }
             return ""

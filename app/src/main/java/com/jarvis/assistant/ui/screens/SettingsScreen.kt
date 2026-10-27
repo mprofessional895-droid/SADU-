@@ -37,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.jarvis.assistant.AssistantText
 import com.jarvis.assistant.JarvisViewModel
+import com.jarvis.assistant.Mode
 import com.jarvis.assistant.READY_NOTE
 import com.jarvis.assistant.ui.Dimens
 import com.jarvis.assistant.ui.Ink
@@ -44,6 +45,7 @@ import com.jarvis.assistant.ui.components.ActionRow
 import com.jarvis.assistant.ui.components.GhostButton
 import com.jarvis.assistant.ui.components.HairlineDivider
 import com.jarvis.assistant.ui.components.KeyValueRow
+import com.jarvis.assistant.ui.components.ModeSwitch
 import com.jarvis.assistant.ui.components.SectionLabel
 import com.jarvis.assistant.ui.components.SurfaceCard
 import com.jarvis.assistant.ui.components.ToggleRow
@@ -73,6 +75,7 @@ val Languages = listOf(
 
 /** Everything the Settings screen shows. Plain data so it can be rendered without a device. */
 data class SettingsUiState(
+    val mode: Mode = Mode.Default,
     val modelReady: Boolean = false,
     val modelPresent: Boolean = false,
     val modelNote: String? = null,
@@ -104,6 +107,7 @@ fun SettingsScreen(vm: JarvisViewModel) {
 
     SettingsContent(
         state = SettingsUiState(
+            mode = vm.mode,
             modelReady = vm.modelReady,
             modelPresent = vm.modelPresent,
             modelNote = vm.modelNote,
@@ -125,6 +129,7 @@ fun SettingsScreen(vm: JarvisViewModel) {
             permissionCount = com.jarvis.assistant.PhoneActionCatalog.runtimePermissions(Build.VERSION.SDK_INT).size,
             versionLine = vm.versionLine,
         ),
+        onMode = { vm.chooseMode(it) },
         onImportModel = { picker.launch(arrayOf("*/*")) },
         onReloadModel = { vm.loadModel() },
         onSpeak = { vm.setSpeak(it) },
@@ -143,6 +148,7 @@ fun SettingsScreen(vm: JarvisViewModel) {
 @Composable
 fun SettingsContent(
     state: SettingsUiState,
+    onMode: (Mode) -> Unit,
     onImportModel: () -> Unit,
     onReloadModel: () -> Unit,
     onSpeak: (Boolean) -> Unit,
@@ -167,6 +173,36 @@ fun SettingsContent(
         }
 
         // ------------------------------------------------------------------- model
+        // -------------------------------------------------------------------- mode
+        item(key = "mode") {
+            Column {
+                SectionLabel("What Jarvis may do", modifier = Modifier.padding(bottom = 8.dp))
+                SurfaceCard {
+                    Text(
+                        text = AssistantText.modeLabel(state.mode) + " mode",
+                        color = Ink.Text,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = AssistantText.modeLine(state.mode),
+                        color = Ink.TextDim,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    ModeSwitch(mode = state.mode, onSelect = onMode)
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "Chat keeps the assistant's full attention on talking with you. " +
+                            "Control gives it your phone as well, so it can send messages, call, " +
+                            "set alarms, open apps and work the screen.",
+                        color = Ink.TextDim,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
+
         item(key = "model") {
             Column {
                 SectionLabel("The assistant's brain", modifier = Modifier.padding(bottom = 8.dp))

@@ -7,6 +7,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,12 +44,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.jarvis.assistant.AssistantText
+import com.jarvis.assistant.Mode
 import com.jarvis.assistant.ui.Dimens
 import com.jarvis.assistant.ui.Ink
 import com.jarvis.assistant.ui.rememberReducedMotion
@@ -191,6 +198,78 @@ fun RoundIconButton(
 }
 
 /* --------------------------------------------------------------------- bits */
+
+/**
+ * The two modes, side by side, so neither can be a surprise: the active half is filled and
+ * each half is a real selectable target. Used wherever there is room for both words.
+ */
+@Composable
+fun ModeSwitch(mode: Mode, onSelect: (Mode) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(24.dp))
+            .border(1.dp, Ink.Border, RoundedCornerShape(24.dp))
+            .padding(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ModeSegment(Mode.Chat, mode, onSelect)
+        ModeSegment(Mode.Control, mode, onSelect)
+    }
+}
+
+@Composable
+private fun ModeSegment(mode: Mode, current: Mode, onSelect: (Mode) -> Unit) {
+    val active = mode == current
+    val label = AssistantText.modeLabel(mode)
+    Box(
+        modifier = Modifier
+            .heightIn(min = 42.dp)
+            .clip(RoundedCornerShape(21.dp))
+            .background(if (active) Ink.Accent else Color.Transparent)
+            .selectable(
+                selected = active,
+                role = Role.RadioButton,
+                onClick = { onSelect(mode) },
+            )
+            .semantics { onClick(label = "Switch to $label mode", action = null) }
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = if (active) Ink.Background else Ink.TextDim,
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
+}
+
+/** The compact version for tight headers: shows the mode, switches on tap. */
+@Composable
+fun ModeChip(mode: Mode, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+    val next = if (mode == Mode.Control) Mode.Chat else Mode.Control
+    Row(
+        modifier = modifier
+            .heightIn(min = Dimens.touch)
+            .clip(RoundedCornerShape(20.dp))
+            .border(1.dp, Ink.Border, RoundedCornerShape(20.dp))
+            .clickable(onClickLabel = "Switch to ${AssistantText.modeLabel(next)} mode", onClick = onToggle)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(5.dp)
+                .clip(CircleShape)
+                .background(if (mode == Mode.Control) Ink.Accent else Ink.TextDim),
+        )
+        Spacer(Modifier.width(7.dp))
+        Text(
+            text = AssistantText.modeLabel(mode).uppercase(),
+            color = Ink.Text,
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
+}
 
 @Composable
 fun StatusPill(text: String, active: Boolean, modifier: Modifier = Modifier) {

@@ -23,6 +23,14 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("confirm_sms", true)
         set(v) = p.edit().putBoolean("confirm_sms", v).apply()
 
+    /**
+     * Chat mode is conversation only; Control mode may use the phone.
+     * Anything unreadable (including a missing value) means Chat.
+     */
+    var mode: Mode
+        get() = Mode.from(p.getString("mode", null))
+        set(v) = p.edit().putString("mode", v.tag).apply()
+
     /** Call directly instead of opening the dialer. */
     var directCall: Boolean
         get() = p.getBoolean("direct_call", false)
