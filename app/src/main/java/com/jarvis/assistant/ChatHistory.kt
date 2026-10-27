@@ -19,6 +19,8 @@ data class ChatSession(
     val title: String,
     val createdAt: Long,
     val messages: List<ChatMsg>,
+    /** The mode this conversation was started in - shown as a tag in the list. */
+    val mode: Mode = Mode.Default,
 ) {
     /** How many things the user actually asked. */
     val askedCount: Int get() = messages.count { it.fromUser }
@@ -68,6 +70,7 @@ class ChatHistory(private val ctx: Context) {
                         .put("id", s.id)
                         .put("title", s.title)
                         .put("created", s.createdAt)
+                        .put("mode", s.mode.tag)
                         .put("msgs", msgs),
                 )
             }
@@ -99,6 +102,8 @@ class ChatHistory(private val ctx: Context) {
             title = o.optString("title").ifBlank { "Conversation" },
             createdAt = created,
             messages = msgs,
+            // Older files have no mode; Chat is the safe reading.
+            mode = Mode.from(o.optString("mode")),
         )
     }
 

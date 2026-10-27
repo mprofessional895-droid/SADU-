@@ -22,9 +22,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Alarm
+import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Mood
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Sms
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material3.Icon
@@ -43,10 +47,12 @@ import com.jarvis.assistant.AiState
 import com.jarvis.assistant.AssistantText
 import com.jarvis.assistant.ChatMsg
 import com.jarvis.assistant.JarvisViewModel
+import com.jarvis.assistant.Mode
 import com.jarvis.assistant.ui.Dimens
 import com.jarvis.assistant.ui.Ink
 import com.jarvis.assistant.ui.components.FadeIn
 import com.jarvis.assistant.ui.components.JarvisOrb
+import com.jarvis.assistant.ui.components.ModeSwitch
 import com.jarvis.assistant.ui.components.RoundIconButton
 import com.jarvis.assistant.ui.components.SectionLabel
 import com.jarvis.assistant.ui.components.StatusPill
@@ -69,6 +75,17 @@ val QuickActions = listOf(
     QuickAction("Set an alarm", "Then finish it", Icons.Rounded.Alarm, "set an alarm for ", false),
 )
 
+/**
+ * Chat mode cannot touch the phone, so it offers conversation instead of shortcuts that
+ * would only be refused. Searching the web and remembering facts both work in Chat mode.
+ */
+val ChatQuickActions = listOf(
+    QuickAction("About me", "What can I do?", Icons.Rounded.Psychology, "What can you do?", true),
+    QuickAction("Tell me a joke", "Cheer me up", Icons.Rounded.Mood, "Tell me a joke", true),
+    QuickAction("Search the web", "For anything", Icons.Rounded.Search, "search the web for ", false),
+    QuickAction("Remember", "A fact about me", Icons.Rounded.BookmarkAdd, "remember that ", false),
+)
+
 @Composable
 fun HomeScreen(vm: JarvisViewModel) {
     HomeContent(
@@ -78,6 +95,8 @@ fun HomeScreen(vm: JarvisViewModel) {
         error = vm.errorText,
         note = if (vm.modelReady) null else vm.modelNote,
         lastTurn = vm.lastTurn,
+        mode = vm.mode,
+        onMode = { vm.chooseMode(it) },
         onMic = { vm.startListening() },
         onType = { vm.askForText(null) },
         onQuickAction = { action ->
@@ -95,18 +114,21 @@ fun HomeContent(
     error: String?,
     note: String?,
     lastTurn: List<ChatMsg>,
+    mode: Mode,
+    onMode: (Mode) -> Unit,
     onMic: () -> Unit,
     onType: () -> Unit,
     onQuickAction: (QuickAction) -> Unit,
     onDismissError: () -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
-    // A short window (landscape, small phone) scrolls instead of clipping.
-    val compact = maxHeight < 460.dp
+    // A short window (landscape, small phone) scrolls instead of clipping; otherwise the
+    // orb takes whatever height is left, and is never larger than the box it sits in.
+    val short = maxHeight < 520.dp
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .then(if (compact) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+            .then(if (short) Modifier.verticalScroll(rememberScrollState()) else Modifier)
             .padding(horizontal = Dimens.gutter),
     ) {
         // ---------------------------------------------------------------- header
@@ -144,7 +166,7 @@ fun HomeContent(
         }
 
         // ------------------------------------------------------------------- orb
-        if (compact) {
+        if (short) {
             Box(
                 modifier = Modifier.fillMaxWidth().height(180.dp),
                 contentAlignment = Alignment.Center,
@@ -157,7 +179,7 @@ fun HomeContent(
                 contentAlignment = Alignment.Center,
             ) {
                 val available = minOf(maxWidth, maxHeight)
-                val diameter = available.coerceIn(132.dp, 232.dp)
+                val diameter = available.coerceAtMost(232.dp)
                 JarvisOrb(
                     state = state,
                     level = level,
@@ -167,11 +189,14 @@ fun HomeContent(
             }
         }
 
-        // ---------------------------------------------------------------- status
+        // -------------------------------------------------------- mode and status
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+            ModeSwitch(mode = mode, onSelect = onMode)
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = AssistantText.stateLabel(state),
                 color = Ink.TextDim,
@@ -239,7 +264,7 @@ fun HomeContent(
             horizontalArrangement = Arrangement.spacedBy(Dimens.gap),
             contentPadding = PaddingValues(bottom = 12.dp),
         ) {
-            items(QuickActions) { action ->
+            items(if (mode == Mode.Chat) ChatQuickActions else QuickActions) { action ->
                 QuickActionCard(action = action, onClick = { onQuickAction(action) })
             }
         }

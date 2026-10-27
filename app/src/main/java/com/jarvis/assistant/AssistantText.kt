@@ -29,6 +29,17 @@ object AssistantText {
         AiState.Error -> "Something went wrong"
     }
 
+    fun modeLabel(mode: Mode): String = when (mode) {
+        Mode.Chat -> "Chat"
+        Mode.Control -> "Control"
+    }
+
+    /** One line for the settings screen explaining what the mode allows. */
+    fun modeLine(mode: Mode): String = when (mode) {
+        Mode.Chat -> "Conversation and the web. Jarvis will not touch your phone."
+        Mode.Control -> "Jarvis can use your phone: messages, calls, alarms, apps and the screen."
+    }
+
     /** The name the user asked Jarvis to remember, if any. */
     fun nameFrom(facts: List<String>): String? =
         facts.firstOrNull { it.startsWith(NAME_PREFIX) }

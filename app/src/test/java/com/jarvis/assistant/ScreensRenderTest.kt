@@ -100,6 +100,8 @@ class ScreensRenderTest {
                 error = null,
                 note = null,
                 lastTurn = emptyList(),
+                mode = Mode.Chat,
+                onMode = {},
                 onMic = {},
                 onType = {},
                 onQuickAction = {},
@@ -120,6 +122,8 @@ class ScreensRenderTest {
                 error = "I need microphone permission before I can listen.",
                 note = "One-time setup: import a Gemma model file in Settings",
                 lastTurn = emptyList(),
+                mode = Mode.Chat,
+                onMode = {},
                 onMic = {},
                 onType = {},
                 onQuickAction = {},
@@ -136,8 +140,15 @@ class ScreensRenderTest {
         shoot("home-640x360")
     }
 
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
+    fun homeControlMode() {
+        show { HomeAtRest(mode = Mode.Control) }
+        shoot("home-control-360x640")
+    }
+
     @Composable
-    private fun HomeAtRest() {
+    private fun HomeAtRest(mode: Mode = Mode.Chat) {
         HomeContent(
             greeting = "Good evening, Ada.",
             state = AiState.Idle,
@@ -152,6 +163,8 @@ class ScreensRenderTest {
                     at = T0 + 20_000,
                 ),
             ),
+            mode = mode,
+            onMode = {},
             onMic = {},
             onType = {},
             onQuickAction = { },
@@ -208,6 +221,7 @@ class ScreensRenderTest {
         messages: List<ChatMsg>,
         state: AiState = AiState.Idle,
         stream: String? = null,
+        mode: Mode = Mode.Control,
     ) {
         Chat(
             title = "Text Mom that I'm on my way",
@@ -217,6 +231,8 @@ class ScreensRenderTest {
             error = null,
             draft = "Text Mom that I'm ",
             focusToken = 0,
+            mode = mode,
+            onMode = {},
             onBack = {},
             onNewChat = {},
             onDraftChange = { },
@@ -253,11 +269,13 @@ class ScreensRenderTest {
             title = "Text Mom that I'm on my way",
             createdAt = T0,
             messages = sampleMessages(),
+            mode = Mode.Control,
         ),
         ChatSession(
             id = 2L,
             title = "Set an alarm for 6:30 am",
             createdAt = T0 - 3_600_000,
+            mode = Mode.Control,
             messages = listOf(
                 ChatMsg("Set an alarm for 6:30 am", fromUser = true, at = T0 - 3_600_000),
                 ChatMsg("Alarm set for 6:30 am tomorrow.", fromUser = false, at = T0 - 3_590_000),
@@ -369,6 +387,7 @@ class ScreensRenderTest {
     @Composable
     private fun settingsContent() {
         SettingsContent(
+                onMode = {},
                 state = SettingsUiState(
                     modelReady = true,
                     modelPresent = true,

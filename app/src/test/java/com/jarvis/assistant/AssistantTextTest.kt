@@ -1,6 +1,7 @@
 package com.jarvis.assistant
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.util.Calendar
@@ -56,6 +57,14 @@ class AssistantTextTest {
         val now = System.currentTimeMillis()
         assertEquals("Today", AssistantText.dayLabel(now, now))
         assertEquals("Yesterday", AssistantText.dayLabel(now - 24 * 60 * 60 * 1000L, now))
+    }
+
+    @Test
+    fun modesAreNamedForPeople() {
+        assertEquals("Chat", AssistantText.modeLabel(Mode.Chat))
+        assertEquals("Control", AssistantText.modeLabel(Mode.Control))
+        assertTrue(AssistantText.modeLine(Mode.Chat).contains("will not touch your phone"))
+        assertTrue(AssistantText.modeLine(Mode.Control).contains("messages, calls"))
     }
 
     @Test

@@ -41,9 +41,9 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     private val memory = Memory(ctx)
     private val engine = LlmEngine(ctx)
     private val actions = Actions(ctx, memory, prefs) { JarvisAccessibilityService.instance }
-    private val tools = Tools(actions, memory)
+    private val tools = Tools(actions, memory) { prefs.mode }
     private val brain: Brain = OfflineBrain(engine)
-    private val assistant = Assistant(brain, actions, memory, tools) { prefs.language }
+    private val assistant = Assistant(brain, actions, memory, tools, { prefs.language }, { prefs.mode })
     private val store = ChatHistory(ctx)
 
     private var idSeed = System.currentTimeMillis()
@@ -104,6 +104,18 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     // ----------------------------------------------------------------- settings
+
+    /** Chat is conversation only; Control may use the phone. Always visible in the UI. */
+    var mode by mutableStateOf(prefs.mode)
+        private set
+
+    fun chooseMode(next: Mode) {
+        if (next == mode) return
+        mode = next
+        prefs.mode = next
+        // The other mode's prompt and rules must not leak into this one.
+        assistant.resetHistory()
+    }
 
     var speakOn by mutableStateOf(prefs.speakEnabled)
         private set
@@ -183,6 +195,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         title = NEW_CHAT_TITLE,
         createdAt = System.currentTimeMillis(),
         messages = listOf(ChatMsg(GREETING, fromUser = false, at = System.currentTimeMillis())),
+        mode = mode,
     )
 
     private fun nextId(): Long = ++idSeed
@@ -204,6 +217,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             title = NEW_CHAT_TITLE,
             createdAt = System.currentTimeMillis(),
             messages = listOf(ChatMsg(GREETING, fromUser = false)),
+            mode = mode,
         )
         sessions = listOf(s) + sessions
         currentId = s.id

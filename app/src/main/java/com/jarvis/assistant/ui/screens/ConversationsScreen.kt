@@ -59,13 +59,16 @@ import com.jarvis.assistant.AssistantText
 import com.jarvis.assistant.ChatMsg
 import com.jarvis.assistant.ChatSession
 import com.jarvis.assistant.JarvisViewModel
+import com.jarvis.assistant.Mode
 import com.jarvis.assistant.ui.Dimens
 import com.jarvis.assistant.ui.Ink
 import com.jarvis.assistant.ui.MarkdownText
 import com.jarvis.assistant.ui.components.FadeIn
 import com.jarvis.assistant.ui.components.GhostButton
 import com.jarvis.assistant.ui.components.JarvisTextField
+import com.jarvis.assistant.ui.components.ModeChip
 import com.jarvis.assistant.ui.components.RoundIconButton
+import com.jarvis.assistant.ui.components.StatusPill
 import com.jarvis.assistant.ui.components.SurfaceCard
 import com.jarvis.assistant.ui.rememberReducedMotion
 
@@ -89,6 +92,8 @@ fun ConversationsScreen(vm: JarvisViewModel) {
             error = vm.errorText,
             draft = vm.composerText,
             focusToken = vm.composerToken,
+            mode = vm.mode,
+            onMode = { vm.chooseMode(it) },
             onBack = { vm.closeChat() },
             onNewChat = { vm.newChat() },
             onDraftChange = { vm.onComposerChange(it) },
@@ -201,6 +206,12 @@ private fun ConversationRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
+                    Spacer(Modifier.width(8.dp))
+                    // Which mode this conversation was started in.
+                    StatusPill(
+                        text = AssistantText.modeLabel(session.mode),
+                        active = session.mode == Mode.Control,
+                    )
                 }
                 if (session.preview.isNotBlank() && session.preview != session.title) {
                     Spacer(Modifier.height(4.dp))
@@ -270,6 +281,8 @@ fun Chat(
     error: String?,
     draft: String,
     focusToken: Int,
+    mode: Mode,
+    onMode: (Mode) -> Unit,
     onBack: () -> Unit,
     onNewChat: () -> Unit,
     onDraftChange: (String) -> Unit,
@@ -318,6 +331,8 @@ fun Chat(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+            ModeChip(mode = mode, onToggle = { onMode(if (mode == Mode.Control) Mode.Chat else Mode.Control) })
+            Spacer(Modifier.width(4.dp))
             Icon(
                 imageVector = Icons.Rounded.Add,
                 contentDescription = "New chat",

@@ -38,7 +38,12 @@ The in-app model is a Gemma 3 1B `.task` file the user imports once into app sto
 - `ui/screens/` - `HomeScreen.kt`, `ConversationsScreen.kt`, `MemoryScreen.kt`,
   `PhoneActionsScreen.kt`, `SettingsScreen.kt`. Each file exposes a thin `*Screen(vm)` wrapper and a
   stateless `*Content(...)` composable, which is what the screenshot tests render.
-- `Assistant.kt` - the router: rules first, then the brain (JSON tool-calling or chat).
+- `Mode.kt` - `Mode` (Chat / Control) and `ModePolicy`, the single place that decides whether a
+  tool may run and what to say when it may not. Android-free, so it is unit tested directly.
+- `Prompt.kt` - the two prompts. `Prompt.chat` deliberately contains no tool protocol, no menu and
+  no JSON at all; `Prompt.control` carries the menu and the command examples.
+- `Assistant.kt` - the router: rules first (Chat mode uses only the rules that need no phone
+  access), then the brain (JSON tool-calling in Control mode, plain conversation in Chat mode).
 - `Tools.kt` - tool specs + dispatch; the AI's list of abilities.
 - `Actions.kt` - what actually touches the phone (rules, intents, SMS, calls, torch, screen control).
 - `brain/` - `Brain` interface + `OfflineBrain` (the seam for a future cloud/hybrid brain).
@@ -61,12 +66,29 @@ The in-app model is a Gemma 3 1B `.task` file the user imports once into app sto
 - Animation must communicate state, never run for decoration. Anything that moves must consult
   `rememberReducedMotion()` (system "remove animations") and go still when it is set.
 - Layout must survive a small phone and a short window: Home switches to a scrolling layout when
-  the content box is under 460dp tall, so nothing is ever clipped.
+  the content box is under 520dp tall, so nothing is ever clipped; otherwise the orb takes the
+  leftover height and is never larger than its box.
 - Tests: `gradle testDebugUnitTest`. Pure logic: `CommandParserTest`, `ReplyTextTest`,
-  `ReplyClassifierTest`, `AssistantTextTest`, `PhoneActionCatalogTest`. UI layout:
+  `ReplyClassifierTest`, `AssistantTextTest`, `PhoneActionCatalogTest`, `ModeTest` (policy and
+  prompts) and `ModePersistenceTest` (saved mode, saved chat tags, and that the Chat-mode rules
+  never act on the phone). UI layout:
   `ScreensRenderTest` renders every screen off-device (Robolectric + Roborazzi) and writes real
   PNGs to `app/build/screenshots/` - committed copies live in `docs/screenshots/`.
   There is no emulator in this environment, so a render is layout evidence, not runtime proof.
+
+## Modes
+
+Two modes, chosen in Settings or from the switcher on Home and in a chat header:
+
+- **Chat** - conversation only. The prompt has no tool syntax, the rule layer runs only the rules
+  that need no phone access (memory, clock, network), and `Tools.run` refuses every phone tool.
+  The internet still works, gated by `Prefs.internetEnabled` as always.
+- **Control** - everything: rules, tools, accessibility, SMS, calls.
+
+The mode is a permission, not a hint. It is enforced in `ModePolicy` and inside `Tools.run`, so a
+model that ignores its instructions still cannot touch the phone. `Prefs.mode` defaults to Chat;
+a missing or unreadable value reads as Chat. Each saved conversation records the mode it was
+started in and shows it as a tag in the chat list.
 
 ## Release
 
