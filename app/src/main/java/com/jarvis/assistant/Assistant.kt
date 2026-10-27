@@ -60,7 +60,12 @@ class Assistant(
      * call, so the text is held back until it is clearly prose and never flashes JSON on
      * the screen.
      */
+    /** True when the last answer came from a model, false when a built-in rule answered. */
+    var answeredWithModel = false
+        private set
+
     fun respond(text: String, onDelta: (String) -> Unit = {}): String {
+        answeredWithModel = false
         val current = mode()
 
         // "search about X": look it up in the background and answer from what came back.
@@ -102,6 +107,7 @@ class Assistant(
 
         gate?.finish()
         val reply = cleanChat(raw)
+        answeredWithModel = true
         remember(text, reply)
         return reply
     }
@@ -134,6 +140,7 @@ class Assistant(
             }
             val answer = raw?.let { cleanChat(it) }.orEmpty()
             if (answer.isNotBlank() && parseToolCall(raw.orEmpty()) == null) {
+                answeredWithModel = true
                 remember(text, answer)
                 return answer
             }

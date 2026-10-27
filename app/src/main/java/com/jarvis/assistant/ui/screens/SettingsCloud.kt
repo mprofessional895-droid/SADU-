@@ -92,7 +92,7 @@ fun CloudCard(
         Spacer(Modifier.height(12.dp))
         ToggleRow(
             title = "Use the cloud model",
-            subtitle = if (enabled) "On, when the internet is allowed" else "Off",
+            subtitle = if (enabled) "On - replies come from the cloud model" else "Off",
             checked = enabled,
             onCheckedChange = onEnabled,
         )
