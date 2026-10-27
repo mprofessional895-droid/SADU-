@@ -12,6 +12,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.jarvis.assistant.brain.Brain
+import com.jarvis.assistant.brain.BrainRouter
+import com.jarvis.assistant.brain.CloudBrain
+import com.jarvis.assistant.brain.CloudConfig
+import com.jarvis.assistant.brain.CloudProvider
+import com.jarvis.assistant.brain.LlmRequest
 import com.jarvis.assistant.brain.OfflineBrain
 import com.jarvis.assistant.control.JarvisAccessibilityService
 import com.jarvis.assistant.voice.Voice
@@ -42,8 +47,19 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     private val engine = LlmEngine(ctx)
     private val actions = Actions(ctx, memory, prefs) { JarvisAccessibilityService.instance }
     private val tools = Tools(actions, memory) { prefs.mode }
-    private val brain: Brain = OfflineBrain(engine)
-    private val assistant = Assistant(brain, actions, memory, tools, { prefs.language }, { prefs.mode })
+    private val localBrain = OfflineBrain(engine)
+    private val cloudBrain = CloudBrain { cloudConfig() }
+    private val router = BrainRouter(localBrain, cloudBrain) { cloudWanted() }
+    private val brain: Brain = router
+    private val assistant = Assistant(
+        brain,
+        actions,
+        memory,
+        tools,
+        { prefs.language },
+        { prefs.mode },
+        { prefs.contextTokens },
+    )
     private val store = ChatHistory(ctx)
 
     private var idSeed = System.currentTimeMillis()
@@ -113,8 +129,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         if (next == mode) return
         mode = next
         prefs.mode = next
-        // The other mode's prompt and rules must not leak into this one.
-        assistant.resetHistory()
+        // The conversation carries over: only the instructions change with the mode.
     }
 
     var speakOn by mutableStateOf(prefs.speakEnabled)
@@ -130,6 +145,33 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     var language by mutableStateOf(prefs.language)
         private set
     var ttsVoiceMissing by mutableStateOf(false)
+        private set
+
+    // --------------------------------------------------------------- context + cloud
+
+    /** The window the model should run with, in tokens. */
+    var contextTokens by mutableStateOf(prefs.contextTokens)
+        private set
+
+    /** The window the on-device model actually accepted, once it is loaded. */
+    var contextEffective by mutableStateOf(0)
+        private set
+
+    var cloudEnabled by mutableStateOf(prefs.cloudEnabled)
+        private set
+    var cloudProvider by mutableStateOf(prefs.cloudProvider)
+        private set
+    var cloudBaseUrl by mutableStateOf(prefs.cloudBaseUrl)
+        private set
+    var cloudModel by mutableStateOf(prefs.cloudModel)
+        private set
+    var cloudKeySet by mutableStateOf(prefs.cloudApiKey.isNotBlank())
+        private set
+    var cloudKeyProtected by mutableStateOf(prefs.cloudKeyProtected)
+        private set
+
+    /** The result of the last connection test, shown under the button. */
+    var cloudTest by mutableStateOf<String?>(null)
         private set
 
     // ------------------------------------------------------------------ runtime
@@ -230,7 +272,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         if (id == currentId && openChatId == id) return
         currentId = id
         openChatId = id
-        assistant.resetHistory()
+        // Reopening a chat carries on where it left off instead of starting blank.
+        assistant.loadHistory(turnsOf(sessions.firstOrNull { it.id == id }?.messages.orEmpty()))
     }
 
     fun closeChat() {
@@ -317,15 +360,26 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         persist()
         micLevel = 0f
         aiState = AiState.Processing
+
+        val buffer = StreamBuffer()
+        val state = StreamState()
         viewModelScope.launch {
+            val ticker = launch { paceStream(buffer, state) }
             val reply = withContext(Dispatchers.IO) {
                 try {
-                    assistant.respond(text)
+                    assistant.respond(text) { delta -> buffer.append(delta) }
                 } catch (e: Throwable) {
                     "Sorry, something went wrong: ${e.message}"
                 }
             }
-            reveal(reply)
+            state.markFinished()
+            // A rule answer, a tool result, or the whole on-device reply: reveal it smoothly.
+            if (buffer.length == 0) buffer.append(reply)
+            ticker.join()
+            push(ChatMsg(reply, fromUser = false))
+            router.lastFallback?.let { why ->
+                errorText = "Cloud model unavailable ($why) - answered on the device."
+            }
             persist()
             when (ReplyClassifier.of(reply)) {
                 ReplyKind.Failure -> fail(reply, keepReply = true)
@@ -336,28 +390,32 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Shows the finished reply progressively.
-     * This animates text that already exists - the on-device model returns a whole
-     * answer at once and does not stream tokens.
+     * Shows the reply as it arrives, at a steady pace. Cloud text arrives in bursts,
+     * while the rule layer and the on-device model answer in one piece.
      */
-    private suspend fun reveal(full: String) {
-        if (full.isBlank() || full.length > 900 || animationsOff()) {
-            push(ChatMsg(full, fromUser = false))
+    private suspend fun paceStream(buffer: StreamBuffer, state: StreamState) {
+        if (animationsOff()) {
+            while (!state.finished) delay(40)
+            streamText = null
             return
         }
-        val chunk = maxOf(1, ceil(full.length / 44f).toInt())
         var shown = 0
         try {
-            while (shown < full.length) {
-                shown = min(full.length, shown + chunk)
-                streamText = full.substring(0, shown)
-                delay(22)
+            while (true) {
+                val available = buffer.length
+                if (Pacer.done(shown, available, state.finished)) return
+                val next = Pacer.next(shown, available)
+                if (next != shown) {
+                    shown = next
+                    streamText = buffer.snapshot().take(shown)
+                }
+                delay(Pacer.Tick.toLong())
             }
         } finally {
             streamText = null
         }
-        push(ChatMsg(full, fromUser = false))
     }
+
 
     fun dismissError() {
         errorText = null
@@ -521,12 +579,13 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val problem = withContext(Dispatchers.IO) {
                 try {
-                    engine.load()
+                    engine.load(contextTokens)
                     null
                 } catch (e: Throwable) {
                     e.message ?: e.toString()
                 }
             }
+            contextEffective = engine.contextTokens
             if (problem == null) {
                 modelReady = true
                 modelNote = READY_NOTE
@@ -603,4 +662,88 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         voice.destroy()
         engine.close()
     }
+
+    fun chooseContextTokens(tokens: Int) {
+        val clamped = ContextBudget.clamp(tokens)
+        if (clamped == contextTokens) return
+        contextTokens = clamped
+        prefs.contextTokens = clamped
+        // The window is fixed when the model loads, so reload it in the background.
+        if (modelReady) loadModel()
+    }
+
+    fun chooseCloudEnabled(on: Boolean) {
+        cloudEnabled = on
+        prefs.cloudEnabled = on
+        cloudTest = null
+    }
+
+    fun chooseCloudProvider(next: CloudProvider) {
+        cloudProvider = next
+        prefs.cloudProvider = next
+        cloudTest = null
+    }
+
+
+    fun editCloudBaseUrl(value: String) {
+        cloudBaseUrl = value
+        prefs.cloudBaseUrl = value
+        cloudTest = null
+    }
+
+    fun editCloudModel(value: String) {
+        cloudModel = value
+        prefs.cloudModel = value
+        cloudTest = null
+    }
+
+    fun editCloudApiKey(value: String) {
+        prefs.cloudApiKey = value
+        cloudKeySet = value.isNotBlank()
+        cloudKeyProtected = prefs.cloudKeyProtected
+        cloudTest = null
+    }
+
+    fun clearCloudApiKey() = editCloudApiKey("")
+
+
+    /** Sends one tiny request, so the user can see whether the settings work. */
+    fun testCloud() {
+        if (!cloudEnabled) {
+            cloudTest = "Turn the cloud brain on first."
+            return
+        }
+        cloudTest = "Testing..."
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val request = LlmRequest(
+                        system = "Reply with one short friendly sentence.",
+                        turns = emptyList(),
+                        user = "Are you there?",
+                        mode = mode,
+                    )
+                    val reply = cloudBrain.generate(request).trim().take(120)
+                    "Connected. The model said: $reply"
+                } catch (e: Throwable) {
+                    "Could not reach the model: ${e.message}"
+                }
+            }
+            cloudTest = result
+        }
+    }
+
+
+    private fun cloudConfig() = CloudConfig(
+        provider = prefs.cloudProvider,
+        baseUrl = prefs.cloudBaseUrl,
+        model = prefs.cloudModel,
+        apiKey = prefs.cloudApiKey,
+        maxTokens = prefs.cloudMaxTokens,
+    )
+
+    /** Cloud is used when it is switched on, the internet is allowed, and it is set up. */
+    private fun cloudWanted(): Boolean =
+        prefs.cloudEnabled && prefs.internetEnabled && cloudConfig().isUsable
+
 }

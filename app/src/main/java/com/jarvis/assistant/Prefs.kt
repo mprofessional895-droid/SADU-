@@ -1,6 +1,8 @@
 package com.jarvis.assistant
 
 import android.content.Context
+import com.jarvis.assistant.brain.CloudProvider
+import com.jarvis.assistant.brain.cloudProviderFrom
 
 /** Small, persistent user settings. */
 class Prefs(ctx: Context) {
@@ -43,4 +45,42 @@ class Prefs(ctx: Context) {
     var language: String
         get() = p.getString("language", "auto") ?: "auto"
         set(v) = p.edit().putString("language", v).apply()
+
+    /**
+     * The context window the on-device model should run with. Changing it reloads the
+     * model the next time it is needed.
+     */
+    var contextTokens: Int
+        get() = ContextBudget.clamp(p.getInt("context", ContextBudget.Default))
+        set(v) = p.edit().putInt("context", ContextBudget.clamp(v)).apply()
+
+    /** Whether a cloud model may be used, when there is internet and it is configured. */
+    var cloudEnabled: Boolean
+        get() = p.getBoolean("cloud", false)
+        set(v) = p.edit().putBoolean("cloud", v).apply()
+
+    var cloudProvider: CloudProvider
+        get() = cloudProviderFrom(p.getString("cloud_provider", null))
+        set(v) = p.edit().putString("cloud_provider", v.name).apply()
+
+    /** Empty means the provider s own default address. */
+    var cloudBaseUrl: String
+        get() = p.getString("cloud_url", "").orEmpty()
+        set(v) = p.edit().putString("cloud_url", v.trim()).apply()
+
+    var cloudModel: String
+        get() = p.getString("cloud_model", "").orEmpty()
+        set(v) = p.edit().putString("cloud_model", v.trim()).apply()
+
+    /** Stored encrypted with a Keystore key when the device supports it. */
+    var cloudApiKey: String
+        get() = SecretBox.read(p, "cloud_key")
+        set(v) = SecretBox.write(p, "cloud_key", v.trim())
+
+    val cloudKeyProtected: Boolean get() = SecretBox.isProtected(p, "cloud_key")
+
+    /** How long a cloud reply may be. */
+    var cloudMaxTokens: Int
+        get() = p.getInt("cloud_max", 512)
+        set(v) = p.edit().putInt("cloud_max", v.coerceIn(64, 4096)).apply()
 }

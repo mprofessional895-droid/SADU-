@@ -59,7 +59,7 @@ class ModeTest {
         val prompt = Prompt.chat(
             facts = "The user's name is Ada",
             languageName = "Hindi",
-            history = listOf("hi" to "Hello!"),
+            turns = listOf(Turn("hi", "Hello!")),
             text = "how are you",
         )
         assertFalse("Chat mode must not mention JSON", prompt.contains("JSON"))
@@ -85,7 +85,7 @@ class ModeTest {
             facts = "The user's name is Ada",
             menu = "- send_sms(contact, message): send a text",
             languageName = "Hindi",
-            history = emptyList(),
+            turns = emptyList(),
             text = "text mom I'm late",
         )
         assertTrue(prompt.contains("JSON"))

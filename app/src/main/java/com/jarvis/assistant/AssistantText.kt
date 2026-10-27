@@ -76,3 +76,4 @@ object AssistantText {
     /** Gap between messages large enough to be worth printing a timestamp. */
     const val TIMESTAMP_GAP_MS = 5 * 60 * 1000L
 }
+

@@ -9,6 +9,11 @@ import java.io.File
 /** Runs the Gemma model on the phone. No internet needed. */
 class LlmEngine(private val ctx: Context) {
     private var llm: LlmInference? = null
+    private var wantsTokens = ContextBudget.Default
+    private var loadedTokens = 0
+
+    /** The context window the loaded model actually accepted. */
+    val contextTokens: Int get() = loadedTokens
 
     private val modelFile: File get() = File(ctx.filesDir, "model.task")
 
@@ -22,14 +27,28 @@ class LlmEngine(private val ctx: Context) {
     val isLoaded: Boolean get() = llm != null
 
     @Synchronized
-    fun load() {
-        if (llm != null) return
+    fun load(contextTokens: Int = ContextBudget.Default): Int {
+        wantsTokens = ContextBudget.clamp(contextTokens)
+        if (llm != null && loadedTokens == wantsTokens) return loadedTokens
+        if (llm != null) close()
+        val accepted = tryLoad(wantsTokens) ?: tryLoad(ContextBudget.Min)
+            ?: throw IllegalStateException("The model could not be loaded")
+        loadedTokens = accepted
+        return accepted
+    }
+
+    /** Builds the engine at one window size, or null when the model refuses it. */
+    private fun tryLoad(tokens: Int): Int? = try {
         val options = LlmInference.LlmInferenceOptions.builder()
             .setModelPath(modelFile.absolutePath)
-            .setMaxTokens(1024)
+            .setMaxTokens(tokens)
             .setPreferredBackend(LlmInference.Backend.CPU)
             .build()
         llm = LlmInference.createFromOptions(ctx, options)
+        tokens
+    } catch (_: Throwable) {
+        llm = null
+        null
     }
 
     /**
