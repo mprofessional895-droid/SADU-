@@ -113,3 +113,24 @@ class ChatHistory(private val ctx: Context) {
         0L
     }
 }
+
+/**
+ * Pairs the messages of a saved conversation into exchanges, so a reopened chat is fed
+ * back to the model instead of starting blank. The opening greeting has no question, so
+ * it is left out.
+ */
+fun turnsOf(messages: List<ChatMsg>): List<Turn> {
+    val out = ArrayList<Turn>()
+    var pending: String? = null
+    for (m in messages) {
+        if (m.fromUser) {
+            pending?.let { out.add(Turn(it, "")) }
+            pending = m.text
+        } else if (pending != null) {
+            out.add(Turn(pending, m.text))
+            pending = null
+        }
+    }
+    pending?.let { out.add(Turn(it, "")) }
+    return out
+}

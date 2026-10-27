@@ -11,8 +11,8 @@ android {
         applicationId = "com.jarvis.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.6"
+        versionCode = 7
+        versionName = "0.7"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -59,6 +59,8 @@ dependencies {
     implementation("com.google.mediapipe:tasks-genai:0.10.27")
 
     testImplementation("junit:junit:4.13.2")
+    // A real org.json on the test classpath: the phone jar stubs it out.
+    testImplementation("org.json:json:20240303")
 
     // Renders the real Compose UI to PNG on the JVM, so the design can be checked
     // without a device or emulator.

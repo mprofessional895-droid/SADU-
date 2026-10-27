@@ -1,10 +1,42 @@
 package com.jarvis.assistant.brain
 
+import com.jarvis.assistant.Mode
+import com.jarvis.assistant.Turn
+
 /**
- * The seam where a cloud brain can be dropped in later.
- * OfflineBrain runs Gemma on the phone; a future CloudBrain would use the same API.
+ * One request, in a shape every brain understands.
+ *
+ * [system] is the instructions, [turns] the conversation so far and [user] the new
+ * message. A local model gets all of it flattened into one prompt; a cloud model maps it
+ * onto real system/user/assistant roles.
+ */
+data class LlmRequest(
+    val system: String,
+    val turns: List<Turn>,
+    val user: String,
+    val mode: Mode,
+)
+
+/**
+ * The seam between the app and whatever answers: the on-device model, a cloud model, or
+ * the router that picks between them.
  */
 interface Brain {
+
     val isReady: Boolean
-    fun generate(prompt: String): String
+
+    /** Short name shown in Settings, e.g. "On-device Gemma". */
+    val name: String
+
+    fun generate(request: LlmRequest): String
+
+    /**
+     * Same answer, but [onDelta] is called as text arrives. The default keeps one-shot
+     * brains honest: they hand over the whole reply in a single delta.
+     */
+    fun generateStream(request: LlmRequest, onDelta: (String) -> Unit): String {
+        val reply = generate(request)
+        if (reply.isNotEmpty()) onDelta(reply)
+        return reply
+    }
 }

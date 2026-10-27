@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.jarvis.assistant.AssistantText
 import com.jarvis.assistant.JarvisViewModel
 import com.jarvis.assistant.Mode
+import com.jarvis.assistant.brain.CloudProvider
 import com.jarvis.assistant.READY_NOTE
 import com.jarvis.assistant.ui.Dimens
 import com.jarvis.assistant.ui.Ink
@@ -96,6 +97,15 @@ data class SettingsUiState(
     val grantedCount: Int = 0,
     val permissionCount: Int = 0,
     val versionLine: String = "",
+    val contextTokens: Int = 4096,
+    val contextEffective: Int = 0,
+    val cloudEnabled: Boolean = false,
+    val cloudProvider: CloudProvider = CloudProvider.Compatible,
+    val cloudBaseUrl: String = "",
+    val cloudModel: String = "",
+    val cloudKeySet: Boolean = false,
+    val cloudKeyProtected: Boolean = false,
+    val cloudTest: String? = null,
 )
 
 @Composable
@@ -128,6 +138,15 @@ fun SettingsScreen(vm: JarvisViewModel) {
             grantedCount = vm.granted.size,
             permissionCount = com.jarvis.assistant.PhoneActionCatalog.runtimePermissions(Build.VERSION.SDK_INT).size,
             versionLine = vm.versionLine,
+            contextTokens = vm.contextTokens,
+            contextEffective = vm.contextEffective,
+            cloudEnabled = vm.cloudEnabled,
+            cloudProvider = vm.cloudProvider,
+            cloudBaseUrl = vm.cloudBaseUrl,
+            cloudModel = vm.cloudModel,
+            cloudKeySet = vm.cloudKeySet,
+            cloudKeyProtected = vm.cloudKeyProtected,
+            cloudTest = vm.cloudTest,
         ),
         onMode = { vm.chooseMode(it) },
         onImportModel = { picker.launch(arrayOf("*/*")) },
@@ -142,6 +161,14 @@ fun SettingsScreen(vm: JarvisViewModel) {
             vm.clearMemory()
             vm.deleteAllChats()
         },
+        onContextTokens = { vm.chooseContextTokens(it) },
+        onCloudEnabled = { vm.chooseCloudEnabled(it) },
+        onCloudProvider = { vm.chooseCloudProvider(it) },
+        onCloudBaseUrl = { vm.editCloudBaseUrl(it) },
+        onCloudModel = { vm.editCloudModel(it) },
+        onCloudKey = { vm.editCloudApiKey(it) },
+        onClearCloudKey = { vm.clearCloudApiKey() },
+        onTestCloud = { vm.testCloud() },
     )
 }
 
@@ -158,6 +185,14 @@ fun SettingsContent(
     onDirectCall: (Boolean) -> Unit,
     onLanguage: (String) -> Unit,
     onDeleteEverything: () -> Unit,
+    onContextTokens: (Int) -> Unit = {},
+    onCloudEnabled: (Boolean) -> Unit = {},
+    onCloudProvider: (CloudProvider) -> Unit = {},
+    onCloudBaseUrl: (String) -> Unit = {},
+    onCloudModel: (String) -> Unit = {},
+    onCloudKey: (String) -> Unit = {},
+    onClearCloudKey: () -> Unit = {},
+    onTestCloud: () -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -234,6 +269,41 @@ fun SettingsContent(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+            }
+        }
+
+        // -------------------------------------------------------- memory window
+        item(key = "context") {
+            Column {
+                SectionLabel("Conversation memory", modifier = Modifier.padding(bottom = 8.dp))
+                ContextWindowCard(
+                    current = state.contextTokens,
+                    effective = state.contextEffective,
+                    onPick = onContextTokens,
+                )
+            }
+        }
+
+        // ------------------------------------------------------------------- cloud
+        item(key = "cloud") {
+            Column {
+                SectionLabel("Cloud brain", modifier = Modifier.padding(bottom = 8.dp))
+                CloudCard(
+                    enabled = state.cloudEnabled,
+                    provider = state.cloudProvider,
+                    baseUrl = state.cloudBaseUrl,
+                    model = state.cloudModel,
+                    keySet = state.cloudKeySet,
+                    keyProtected = state.cloudKeyProtected,
+                    test = state.cloudTest,
+                    onEnabled = onCloudEnabled,
+                    onProvider = onCloudProvider,
+                    onBaseUrl = onCloudBaseUrl,
+                    onModel = onCloudModel,
+                    onKey = onCloudKey,
+                    onClearKey = onClearCloudKey,
+                    onTest = onTestCloud,
+                )
             }
         }
 
