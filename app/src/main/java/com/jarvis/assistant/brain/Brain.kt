@@ -28,6 +28,13 @@ interface Brain {
     /** Short name shown in Settings, e.g. "On-device Gemma". */
     val name: String
 
+    /**
+     * True when the last reply stopped at the model's output limit rather than because it
+     * was finished. Only a brain that is told so can say - the on-device engine does not
+     * report a stop reason, so it keeps the default.
+     */
+    val lastReplyTruncated: Boolean get() = false
+
     fun generate(request: LlmRequest): String
 
     /**

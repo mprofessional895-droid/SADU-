@@ -85,7 +85,8 @@ class Prefs(ctx: Context) {
     val cloudKeyProtected: Boolean get() = SecretBox.isProtected(p, "cloud_key")
 
     /** How long a cloud reply may be. */
-    var cloudMaxTokens: Int
-        get() = p.getInt("cloud_max", 512)
-        set(v) = p.edit().putInt("cloud_max", v.coerceIn(64, 4096)).apply()
+    /** How long Jarvis should make its answers. */
+    var replyLength: ReplyLength
+        get() = ReplyLength.of(p.getString("reply_length", null))
+        set(v) = p.edit().putString("reply_length", v.key).apply()
 }

@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.jarvis.assistant.ContextBudget
+import com.jarvis.assistant.ReplyLength
 import com.jarvis.assistant.brain.CloudProvider
 import com.jarvis.assistant.ui.Ink
 import com.jarvis.assistant.ui.components.GhostButton
@@ -25,9 +26,15 @@ import com.jarvis.assistant.ui.components.StatusPill
 import com.jarvis.assistant.ui.components.SurfaceCard
 import com.jarvis.assistant.ui.components.ToggleRow
 
-/** The context window chooser: how much of the conversation Jarvis keeps in mind. */
+/** How much of the conversation Jarvis keeps in mind, and how long its answers should be. */
 @Composable
-fun ContextWindowCard(current: Int, effective: Int, onPick: (Int) -> Unit) {
+fun ContextWindowCard(
+    current: Int,
+    effective: Int,
+    onPick: (Int) -> Unit,
+    length: ReplyLength = ReplyLength.Default,
+    onLength: (ReplyLength) -> Unit = {},
+) {
     SurfaceCard {
         Text("Conversation memory", color = Ink.Text, style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(6.dp))
@@ -54,6 +61,32 @@ fun ContextWindowCard(current: Int, effective: Int, onPick: (Int) -> Unit) {
             } else {
                 "Jarvis will use this window the next time the model loads."
             },
+            color = Ink.TextDim,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.height(18.dp))
+        Text("Reply length", color = Ink.Text, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "How long Jarvis should make its answers. Longer answers take more time on the " +
+                "phone and cost more on a paid cloud model.",
+            color = Ink.TextDim,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ReplyLength.Choices.forEach { option ->
+                StatusPill(
+                    text = option.label,
+                    active = option == length,
+                    modifier = Modifier.clickable { onLength(option) },
+                )
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "The cloud model is allowed about " + length.tokens + " tokens per reply. " +
+                "Ask for more or less in the message itself and Jarvis follows you.",
             color = Ink.TextDim,
             style = MaterialTheme.typography.bodySmall,
         )

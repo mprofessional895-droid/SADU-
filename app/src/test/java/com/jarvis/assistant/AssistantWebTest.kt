@@ -30,8 +30,10 @@ class AssistantWebTest {
         private val reply: String,
         override val isReady: Boolean = true,
         private val fails: Boolean = false,
+        var truncated: Boolean = false,
     ) : Brain {
         override val name: String get() = "fake"
+        override val lastReplyTruncated: Boolean get() = truncated
         var last: LlmRequest? = null
         var asked = 0
             private set
@@ -80,8 +82,9 @@ class AssistantWebTest {
         { "auto" },
         { prefs.mode },
         { ContextBudget.Default },
-        { webOn },
-        fetch,
+        replyLength = { ReplyLength.Short },
+        webAnswers = { webOn },
+        fetch = fetch,
     )
 
     @Test
@@ -166,5 +169,19 @@ class AssistantWebTest {
         val answer = assistant(brain, reader(wiki = false)).respond("search about nothing at all")
         assertNull("the model is not asked about an empty search", brain.last)
         assertFalse(answer.contains("Here is what I found"))
+    }
+
+    @Test
+    fun aReplyCutOffAtTheLengthLimitIsReported() {
+        val brain = FakeBrain("Once upon a time, and then the model ran out of")
+        val assistant = assistant(brain)
+
+        brain.truncated = true
+        assistant.respond("tell me a long story")
+        assertTrue("the app must know it was cut off", assistant.lastReplyTruncated)
+
+        brain.truncated = false
+        assistant.respond("and now something short")
+        assertFalse("a finished reply clears it", assistant.lastReplyTruncated)
     }
 }

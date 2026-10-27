@@ -23,6 +23,7 @@ import com.jarvis.assistant.ui.Ink
 import com.jarvis.assistant.ui.JarvisNavBar
 import com.jarvis.assistant.ui.JarvisTheme
 import com.jarvis.assistant.ui.screens.Chat
+import com.jarvis.assistant.ui.screens.ContextWindowCard
 import com.jarvis.assistant.ui.screens.ConversationList
 import com.jarvis.assistant.ui.screens.HomeContent
 import com.jarvis.assistant.ui.screens.MemoryContent
@@ -382,6 +383,23 @@ class ScreensRenderTest {
     fun settings() {
         show { settingsContent() }
         shoot("settings-360x640")
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
+    fun replyLengthChoices() {
+        show {
+            Column(Modifier.fillMaxSize().padding(12.dp)) {
+                ContextWindowCard(
+                    current = 4096,
+                    effective = 4096,
+                    onPick = {},
+                    length = ReplyLength.Long,
+                    onLength = {},
+                )
+            }
+        }
+        shoot("settings-reply-length-360x640")
     }
 
     @Composable
