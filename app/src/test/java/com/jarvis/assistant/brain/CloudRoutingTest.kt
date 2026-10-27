@@ -6,46 +6,49 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The cloud model used to be skipped in silence when internet access was off, so the
- * reply came from the phone with no explanation. Every way of being skipped now says so.
+ * A cloud model that is switched on but does not answer must say why, in words the user
+ * can act on. The trap this guards: a saved API key with the model name still empty, and
+ * every reply coming quietly from the phone.
  */
 class CloudRoutingTest {
 
     @Test
     fun nothingIsSaidWhenTheCloudWasNeverWanted() {
-        assertNull(cloudSkipNote(false, internetAllowed = false, problem = null, usedCloud = false))
-        assertNull(cloudSkipNote(false, internetAllowed = true, problem = "add a model name", usedCloud = false))
+        assertNull(cloudSkipNote(cloudEnabled = false, problem = null, usedCloud = false))
+        assertNull(cloudSkipNote(false, problem = "Add the model name", usedCloud = false))
     }
 
     @Test
     fun nothingIsSaidWhenTheCloudAnswered() {
-        assertNull(cloudSkipNote(true, internetAllowed = true, problem = null, usedCloud = true))
-    }
-
-    @Test
-    fun blockedInternetIsNamedAsTheReason() {
-        val why = cloudSkipNote(true, internetAllowed = false, problem = null, usedCloud = false)
-        assertNotNull(why)
-        assertTrue(why!!, why.contains("internet access is blocked"))
-        assertTrue(why, why.contains("Settings"))
+        assertNull(cloudSkipNote(true, problem = null, usedCloud = true))
+        assertNull(cloudSkipNote(true, problem = null, usedCloud = true))
     }
 
     @Test
     fun anIncompleteSetupQuotesTheFieldItself() {
         val why = cloudSkipNote(
-            true,
-            internetAllowed = true,
+            cloudEnabled = true,
             problem = "Add the model name, for example gpt-4o-mini",
             usedCloud = false,
         )
         assertNotNull(why)
         assertTrue(why!!, why.contains("Add the model name"))
+        assertTrue(why, why.contains("not ready"))
     }
 
     @Test
     fun anyOtherSkipIsStillAdmitted() {
-        val why = cloudSkipNote(true, internetAllowed = true, problem = null, usedCloud = false)
+        val why = cloudSkipNote(cloudEnabled = true, problem = null, usedCloud = false)
         assertNotNull(why)
-        assertTrue(why!!, why.contains("not used"))
+        assertTrue(why!!, why.contains("came from the phone"))
+    }
+
+    @Test
+    fun theInternetSwitchIsNotPartOfThisDecision() {
+        // Anyone reading the note must not be sent to the wrong switch: the cloud model
+        // has its own toggle, and "allow internet access" is only about the phone tools.
+        val why = cloudSkipNote(cloudEnabled = true, problem = null, usedCloud = false)
+        assertNotNull(why)
+        assertTrue(why!!, !why.contains("internet"))
     }
 }

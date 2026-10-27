@@ -372,7 +372,8 @@ fun SettingsContent(
                     Text(
                         text = "With internet access off, Jarvis still chats, remembers and controls the " +
                             "phone, but web search, opening links and app installation are blocked. With " +
-                            "\"Answer from the web\" off, a search opens your browser instead.",
+                            "\"Answer from the web\" off, a search opens your browser instead. The " +
+                            "cloud model has its own switch under Cloud brain.",
                         color = Ink.TextDim,
                         style = MaterialTheme.typography.bodyMedium,
                     )
