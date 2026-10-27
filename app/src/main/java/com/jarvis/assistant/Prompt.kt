@@ -55,7 +55,9 @@ object Prompt {
             appendFacts(sb, facts)
             sb.append("Write plain sentences with real line breaks: no code, no escape codes such as ")
             sb.append("\\n or \\t, no # headings, no wall of bold, and no quotation marks around the ")
-            sb.append("whole answer. Never say you did something on the phone - in this mode you cannot.\n\n")
+            sb.append("whole answer. Never say you did something on the phone - in this mode you cannot. ")
+            sb.append("If the message carries web results, answer from them and say the answer comes ")
+            sb.append("from a web search.\n\n")
         } else {
             sb.append("You have two modes:\n")
             sb.append("1. CHAT - if the user is chatting, asking a question, or just talking, reply with ")
@@ -86,7 +88,9 @@ object Prompt {
             sb.append("- In chat, write plain sentences with real line breaks. Only the JSON command ")
             sb.append("is JSON; your chat answers are not, so never write escape codes such as ")
             sb.append("\\n or \\t, and never wrap the whole answer in quotation marks.\n")
-            sb.append("- Do not use # headings or a wall of bold. At most one short bold word now and then.\n\n")
+            sb.append("- Do not use # headings or a wall of bold. At most one short bold word now and then.\n")
+            sb.append("- If the message carries web results, answer from them in plain words and say the ")
+            sb.append("answer comes from a web search.\n\n")
         }
         return sb.toString()
     }

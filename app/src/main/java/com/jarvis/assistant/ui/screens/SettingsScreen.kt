@@ -106,6 +106,8 @@ data class SettingsUiState(
     val cloudKeySet: Boolean = false,
     val cloudKeyProtected: Boolean = false,
     val cloudTest: String? = null,
+    val cloudProblem: String? = null,
+    val webAnswers: Boolean = true,
 )
 
 @Composable
@@ -147,6 +149,8 @@ fun SettingsScreen(vm: JarvisViewModel) {
             cloudKeySet = vm.cloudKeySet,
             cloudKeyProtected = vm.cloudKeyProtected,
             cloudTest = vm.cloudTest,
+            cloudProblem = vm.cloudProblem,
+            webAnswers = vm.webAnswers,
         ),
         onMode = { vm.chooseMode(it) },
         onImportModel = { picker.launch(arrayOf("*/*")) },
@@ -169,6 +173,7 @@ fun SettingsScreen(vm: JarvisViewModel) {
         onCloudKey = { vm.editCloudApiKey(it) },
         onClearCloudKey = { vm.clearCloudApiKey() },
         onTestCloud = { vm.testCloud() },
+        onWebAnswers = { vm.chooseWebAnswers(it) },
     )
 }
 
@@ -193,6 +198,7 @@ fun SettingsContent(
     onCloudKey: (String) -> Unit = {},
     onClearCloudKey: () -> Unit = {},
     onTestCloud: () -> Unit = {},
+    onWebAnswers: (Boolean) -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -296,6 +302,7 @@ fun SettingsContent(
                     keySet = state.cloudKeySet,
                     keyProtected = state.cloudKeyProtected,
                     test = state.cloudTest,
+                    problem = state.cloudProblem,
                     onEnabled = onCloudEnabled,
                     onProvider = onCloudProvider,
                     onBaseUrl = onCloudBaseUrl,
@@ -354,10 +361,18 @@ fun SettingsContent(
                         checked = state.internetOn,
                         onCheckedChange = onInternet,
                     )
+                    HairlineDivider()
+                    ToggleRow(
+                        title = "Answer from the web",
+                        subtitle = "Looks up \"search for ...\" and answers from the results",
+                        checked = state.webAnswers,
+                        onCheckedChange = onWebAnswers,
+                    )
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "With this off, Jarvis still chats, remembers and controls the phone, but " +
-                            "web search, opening links and app installation are blocked.",
+                        text = "With internet access off, Jarvis still chats, remembers and controls the " +
+                            "phone, but web search, opening links and app installation are blocked. With " +
+                            "\"Answer from the web\" off, a search opens your browser instead.",
                         color = Ink.TextDim,
                         style = MaterialTheme.typography.bodyMedium,
                     )

@@ -1,0 +1,27 @@
+{
+  "Heading": "Python (programming language)",
+  "AbstractText": "Python is a high-level, general-purpose programming language that emphasizes code readability, simplicity, and ease-of-writing with the use of significant indentation, an extensive standard library, and garbage collection. Python supports multiple programming paradigms but with an emphasis on object-oriented programming and dynamic typing. Guido van Rossum began working on Python in the late 1980s",
+  "AbstractURL": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+  "RelatedTopics": [
+    {
+      "FirstURL": "https://duckduckgo.com/c/Python_(programming_language)",
+      "Icon": {
+        "Height": "",
+        "URL": "",
+        "Width": ""
+      },
+      "Result": "<a href=\"https://duckduckgo.com/c/Python_(programming_language)\">Python (programming language) Category</a>",
+      "Text": "Python (programming language) Category"
+    },
+    {
+      "FirstURL": "https://duckduckgo.com/Pydoc",
+      "Icon": {
+        "Height": "",
+        "URL": "",
+        "Width": ""
+      },
+      "Result": "<a href=\"https://duckduckgo.com/Pydoc\">Pydoc</a> - Pydoc is the standard documentation module for the programming language Python.",
+      "Text": "Pydoc - Pydoc is the standard documentation module for the programming language Python."
+    }
+  ]
+}
