@@ -80,10 +80,10 @@ class Actions(
         }
 
         // ---- questions Jarvis can always answer, command or not ----
-        if (Regex("\\bwhat time\\b|\\bcurrent time\\b|^time$|\\bwhat'?s the time\\b").containsMatchIn(t)) {
+        if (Regex("^(?:jarvis[ ,]+)?(?:what(?:'s| is)? the time|what time is it|current time|time)(?: now| please)?$").matches(t)) {
             return "It's " + SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()) + "."
         }
-        if (Regex("\\bwhat(?:'s| is)? the date\\b|\\bwhat day is it\\b|\\btoday'?s date\\b").containsMatchIn(t)) {
+        if (Regex("^(?:jarvis[ ,]+)?(?:what(?:'s| is)? the date|what day is it|today'?s date|what(?:'s| is)? today)(?: today)?$").matches(t)) {
             return "Today is " + SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date()) + "."
         }
         if (!chatOnly) {

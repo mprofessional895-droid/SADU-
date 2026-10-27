@@ -69,7 +69,7 @@ class ModeTest {
         assertTrue(prompt.contains("The user's name is Ada"))
         assertTrue(prompt.contains("Hindi"))
         assertTrue(prompt.contains("how are you"))
-        assertTrue(prompt.endsWith("Jarvis:"))
+        assertTrue(prompt.endsWith("<start_of_turn>model\n"))
     }
 
     @Test
@@ -93,7 +93,7 @@ class ModeTest {
         assertTrue(prompt.contains("text mom I'm late"))
         assertTrue(prompt.contains("Hindi"))
         assertTrue(prompt.contains("choose CHAT"))
-        assertTrue(prompt.endsWith("Jarvis:"))
+        assertTrue(prompt.endsWith("<start_of_turn>model\n"))
     }
 
     @Test
@@ -108,8 +108,8 @@ class ModeTest {
 
     @Test
     fun longInputIsTrimmedRatherThanPastedWhole() {
-        val long = "x".repeat(2000)
+        val long = "x".repeat(6000)
         val prompt = Prompt.chat("", "", emptyList(), long)
-        assertFalse(prompt.contains("x".repeat(500)))
+        assertFalse(prompt.contains("x".repeat(2500)))
     }
 }

@@ -1,5 +1,6 @@
 package com.jarvis.assistant
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -31,12 +32,30 @@ class PromptTest {
     }
 
     @Test
-    fun theTranscriptEndsWithTheNewQuestion() {
-        val text = Prompt.flatten("INSTRUCTIONS\n", listOf(Turn("hi", "hello")), "how are you")
-        assertTrue(text.startsWith("INSTRUCTIONS"))
-        assertTrue(text.contains("User: hi"))
-        assertTrue(text.contains("Jarvis: hello"))
-        assertTrue("the model carries on from here", text.trimEnd().endsWith("Jarvis:"))
+    fun theLocalPromptUsesGemmasOwnChatTemplate() {
+        val text = Prompt.local("INSTRUCTIONS", listOf(Turn("hi", "hello")), "how are you")
+        assertTrue(text.startsWith("<start_of_turn>user\nINSTRUCTIONS"))
+        assertTrue("the first question is in the same turn as the instructions", text.contains("hi\n<end_of_turn>"))
+        assertTrue(text.contains("<start_of_turn>model\nhello\n<end_of_turn>"))
+        assertTrue("the new question is wrapped too", text.contains("how are you\n<end_of_turn>"))
+        assertTrue("the model carries on from here", text.endsWith("<start_of_turn>model\n"))
+    }
+
+    @Test
+    fun instructionsRideWithTheFirstTurnOnly() {
+        val text = Prompt.local("RULES", listOf(Turn("hi", "hello")), "again")
+        assertEquals(1, Regex("RULES").findAll(text).count())
+        assertEquals(2, Regex("<start_of_turn>user").findAll(text).count())
+        assertEquals(2, Regex("<start_of_turn>model").findAll(text).count())
+    }
+
+    @Test
+    fun theChatPreludeStaysShort() {
+        val text = Prompt.system(Mode.Chat, facts = "", languageName = "")
+        assertTrue(
+            "a small model should spend its window on the conversation, not on rules: ${text.length} characters",
+            text.length < 1200,
+        )
     }
 
     @Test
