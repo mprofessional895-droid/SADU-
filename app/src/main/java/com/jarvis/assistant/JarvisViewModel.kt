@@ -400,13 +400,14 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             ticker.join()
             push(ChatMsg(reply, fromUser = false))
             answeredBy = if (assistant.answeredWithModel) "Answered by " + router.lastUsed else null
-            val usedCloud = router.lastUsed != localBrain.name
+            // Only a model answer can be "the phone instead of the cloud"; a built-in
+            // rule is not a model at all, so it explains nothing.
+            val usedCloud = assistant.answeredWithModel && router.lastUsed != localBrain.name
             val fallback = router.lastFallback
             errorText = when {
                 fallback != null -> "Cloud model unavailable ($fallback) - answered on the device."
                 else -> cloudSkipNote(
                     cloudEnabled = prefs.cloudEnabled,
-                    internetAllowed = prefs.internetEnabled,
                     problem = cloudConfig().problem(),
                     usedCloud = usedCloud,
                 )
@@ -758,11 +759,6 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         refreshCloudProblem()
         cloudProblem?.let { why ->
             cloudTest = why
-            return
-        }
-        if (!prefs.internetEnabled) {
-            cloudTest = "The cloud model needs internet access. Turn on \"Allow internet " +
-                "access\" in Connection, then test again - otherwise the phone answers."
             return
         }
         cloudTest = "Testing..."
