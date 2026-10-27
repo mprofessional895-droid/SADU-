@@ -90,6 +90,7 @@ fun ConversationsScreen(vm: JarvisViewModel) {
             state = vm.aiState,
             streamText = vm.streamText,
             error = vm.errorText,
+            answeredBy = vm.answeredBy,
             draft = vm.composerText,
             focusToken = vm.composerToken,
             mode = vm.mode,
@@ -279,6 +280,7 @@ fun Chat(
     state: AiState,
     streamText: String?,
     error: String?,
+    answeredBy: String? = null,
     draft: String,
     focusToken: Int,
     mode: Mode,
@@ -371,6 +373,15 @@ fun Chat(
                     ThinkingBubble()
                 }
             }
+        }
+
+        if (answeredBy != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = answeredBy,
+                color = Ink.TextDim,
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
 
         if (error != null) {

@@ -93,6 +93,7 @@ fun HomeScreen(vm: JarvisViewModel) {
         state = vm.aiState,
         level = vm.micLevel,
         error = vm.errorText,
+        answeredBy = vm.answeredBy,
         note = if (vm.modelReady) null else vm.modelNote,
         lastTurn = vm.lastTurn,
         mode = vm.mode,
@@ -112,6 +113,7 @@ fun HomeContent(
     state: AiState,
     level: Float,
     error: String?,
+    answeredBy: String? = null,
     note: String?,
     lastTurn: List<ChatMsg>,
     mode: Mode,
@@ -199,6 +201,15 @@ fun HomeContent(
             Spacer(Modifier.width(10.dp))
             Text(
                 text = AssistantText.stateLabel(state),
+                color = Ink.TextDim,
+                style = MaterialTheme.typography.labelSmall,
+            )
+        }
+
+        if (answeredBy != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = answeredBy,
                 color = Ink.TextDim,
                 style = MaterialTheme.typography.labelSmall,
             )
