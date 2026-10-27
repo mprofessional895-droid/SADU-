@@ -8,6 +8,14 @@ import java.io.File
 
 /** Runs the Gemma model on the phone. No internet needed. */
 class LlmEngine(private val ctx: Context) {
+
+    companion object {
+        /** Gemma's own setting: keeps a conversation varied instead of flat. */
+        const val ChatTemperature = 1.0f
+
+        /** Steadier, because a tool call has to come back as valid JSON. */
+        const val CommandTemperature = 0.6f
+    }
     private var llm: LlmInference? = null
     private var wantsTokens = ContextBudget.Default
     private var loadedTokens = 0
@@ -52,15 +60,16 @@ class LlmEngine(private val ctx: Context) {
     }
 
     /**
-     * One fresh chat session per reply, with Google's recommended Gemma sampling
-     * (top-k 64, top-p 0.95) and a calm temperature so a small model stays on topic.
+     * One fresh chat session per reply, with the sampling Google recommends for Gemma
+     * (top-k 64, top-p 0.95) and the temperature the task calls for: a lively 1.0 for
+     * conversation, a steady 0.6 when the answer has to be a JSON command.
      */
-    fun generate(prompt: String): String {
+    fun generate(prompt: String, temperature: Float = ChatTemperature): String {
         val engine = llm ?: throw IllegalStateException("Model is not loaded yet")
         val opts = LlmInferenceSession.LlmInferenceSessionOptions.builder()
             .setTopK(64)
             .setTopP(0.95f)
-            .setTemperature(0.6f)
+            .setTemperature(temperature)
             .build()
         val session = LlmInferenceSession.createFromOptions(engine, opts)
         try {
