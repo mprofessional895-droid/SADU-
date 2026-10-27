@@ -8,21 +8,29 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** The cloud APIs this app knows how to talk to. */
-enum class CloudProvider(val label: String, val defaultBase: String, val hint: String) {
+enum class CloudProvider(
+    val label: String,
+    val defaultBase: String,
+    val hint: String,
+    val exampleModel: String,
+) {
     Compatible(
         "OpenAI-compatible",
         "https://api.openai.com/v1",
         "OpenAI, OpenRouter, Groq, DeepSeek - or Ollama / LM Studio on your own network",
+        "gpt-4o-mini",
     ),
     Anthropic(
         "Anthropic",
         "https://api.anthropic.com",
         "Claude models",
+        "claude-3-5-sonnet-latest",
     ),
     Gemini(
         "Google Gemini",
         "https://generativelanguage.googleapis.com/v1beta",
         "Gemini models",
+        "gemini-2.0-flash",
     ),
 }
 
@@ -39,10 +47,46 @@ data class CloudConfig(
     val maxTokens: Int = 512,
     val timeoutMs: Int = 60_000,
 ) {
-    /** The address to call: what the user typed, or the provider's own default. */
-    val base: String get() = baseUrl.trim().ifBlank { provider.defaultBase }
+    /**
+     * The address to call: what the user typed, or the provider's own default. A missing
+     * scheme becomes https://, because that is what every hosted provider uses, and a
+     * trailing slash is dropped so paths never double up.
+     */
+    val base: String
+        get() {
+            val typed = baseUrl.trim().ifBlank { provider.defaultBase }
+            val withScheme =
+                if (typed.startsWith("http://") || typed.startsWith("https://")) typed
+                else "https://$typed"
+            return withScheme.trimEnd('/')
+        }
 
-    val isUsable: Boolean get() = model.isNotBlank()
+    val isUsable: Boolean get() = problem() == null
+
+    /**
+     * A human reason this setup cannot be used yet, or null when it is fine. The same
+     * wording is shown under the fields and thrown if a call is made anyway.
+     */
+    fun problem(): String? {
+        if (model.isBlank()) return "Add the model name, for example ${provider.exampleModel}"
+        val address = base
+        val host = address.removePrefix("https://").removePrefix("http://")
+            .substringBefore('/').substringBefore(':')
+        if (host.isBlank()) return "That address has no server name in it"
+        if (host.contains(' ') || host.contains('"')) return "That address is not a web address"
+        if (!host.contains('.') && host != "localhost") {
+            return "Check the server name - for example ${provider.defaultBase.removePrefix("https://")}"
+        }
+        if (keyless && provider != CloudProvider.Compatible) {
+            return "${provider.label} needs an API key"
+        }
+        return null
+    }
+
+    /** Worth saying, but not a reason to refuse: the key would travel in the clear. */
+    fun warning(): String? =
+        if (insecureRemote) "http:// is unencrypted. Use https:// unless this is your own server."
+        else null
 
     val keyless: Boolean get() = apiKey.isBlank()
 
@@ -255,7 +299,7 @@ class CloudBrain(private val config: () -> CloudConfig) : Brain {
 
     override fun generate(request: LlmRequest): String {
         val cfg = config()
-        if (!cfg.isUsable) throw IOException("No cloud model name is set")
+        cfg.problem()?.let { throw IOException(it) }
         val body = CloudRequest.body(cfg, request, stream = false)
         val text = post(cfg, CloudRequest.url(cfg, stream = false), body, null)
         if (text.isBlank()) throw IOException("The cloud model sent an empty reply")
@@ -264,7 +308,7 @@ class CloudBrain(private val config: () -> CloudConfig) : Brain {
 
     override fun generateStream(request: LlmRequest, onDelta: (String) -> Unit): String {
         val cfg = config()
-        if (!cfg.isUsable) throw IOException("No cloud model name is set")
+        cfg.problem()?.let { throw IOException(it) }
         val body = CloudRequest.body(cfg, request, stream = true)
         val text = post(cfg, CloudRequest.url(cfg, stream = true), body, onDelta)
         // A server that ignores "stream" answers with the whole body at once.

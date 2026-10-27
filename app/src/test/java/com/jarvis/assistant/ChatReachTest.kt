@@ -3,6 +3,7 @@ package com.jarvis.assistant
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -18,14 +19,26 @@ import org.junit.runner.RunWith
 class ChatReachTest {
 
     private lateinit var actions: Actions
+    private lateinit var prefs: Prefs
 
     @Before
     fun setUp() {
         val ctx = ApplicationProvider.getApplicationContext<Context>()
-        actions = Actions(ctx, Memory(ctx), Prefs(ctx), { null })
+        prefs = Prefs(ctx)
+        prefs.webAnswers = true
+        actions = Actions(ctx, Memory(ctx), prefs, { null })
     }
 
     private fun ruled(text: String) = actions.tryHandleChatMode(text)
+
+    private fun withWebAnswers(on: Boolean, body: () -> Unit) {
+        prefs.webAnswers = on
+        try {
+            body()
+        } finally {
+            prefs.webAnswers = true
+        }
+    }
 
     @Test
     fun ordinaryConversationReachesTheModel() {
@@ -58,8 +71,22 @@ class ChatReachTest {
     }
 
     @Test
-    fun onlyAnExplicitWebRequestGoesToTheBrowser() {
-        assertNotNull(ruled("search for cat videos"))
+    fun onlyAnExplicitWebRequestCountsAsASearch() {
+        assertNull("with web answers on, the Assistant looks this up", ruled("search for cat videos"))
         assertNull("mentioning a search is not a search", ruled("I search for meaning sometimes"))
+        withWebAnswers(false) {
+            assertNotNull("with web answers off, the browser is opened as before", ruled("search for cat videos"))
+        }
+    }
+
+    @Test
+    fun theQueryIsReadOutOfTheRequest() {
+        assertEquals("cat videos", actions.searchQuery("search for cat videos"))
+        assertEquals("24byme", actions.searchQuery("search about 24byme"))
+        assertEquals("the eiffel tower", actions.searchQuery("look up the eiffel tower"))
+        assertEquals("python", actions.searchQuery("google python"))
+        assertNull("a sentence is not a search", actions.searchQuery("I search for meaning sometimes"))
+        assertNull("a question mark means chat", actions.searchQuery("search for cat videos?"))
+        assertNull(actions.searchQuery("search"))
     }
 }

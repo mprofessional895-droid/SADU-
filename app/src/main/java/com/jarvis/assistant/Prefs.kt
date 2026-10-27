@@ -54,6 +54,11 @@ class Prefs(ctx: Context) {
         get() = ContextBudget.clamp(p.getInt("context", ContextBudget.Default))
         set(v) = p.edit().putInt("context", ContextBudget.clamp(v)).apply()
 
+    /** Whether Jarvis may look something up and answer from it, instead of opening a browser. */
+    var webAnswers: Boolean
+        get() = p.getBoolean("web_answers", true)
+        set(v) = p.edit().putBoolean("web_answers", v).apply()
+
     /** Whether a cloud model may be used, when there is internet and it is configured. */
     var cloudEnabled: Boolean
         get() = p.getBoolean("cloud", false)

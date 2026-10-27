@@ -70,6 +70,7 @@ fun CloudCard(
     keySet: Boolean,
     keyProtected: Boolean,
     test: String?,
+    problem: String?,
     onEnabled: (Boolean) -> Unit,
     onProvider: (CloudProvider) -> Unit,
     onBaseUrl: (String) -> Unit,
@@ -138,7 +139,7 @@ fun CloudCard(
                 onClick = { onKey(draft); draft = "" },
                 enabled = draft.isNotBlank(),
             )
-            GhostButton(text = "Test connection", onClick = onTest, enabled = enabled)
+            GhostButton(text = "Test connection", onClick = onTest, enabled = enabled && problem == null)
             if (keySet) GhostButton(text = "Forget key", onClick = onClearKey)
         }
         Spacer(Modifier.height(10.dp))
@@ -154,6 +155,14 @@ fun CloudCard(
             color = Ink.TextDim,
             style = MaterialTheme.typography.bodySmall,
         )
+        if (problem != null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Not ready: " + problem,
+                color = Ink.Text,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         if (test != null) {
             Spacer(Modifier.height(8.dp))
             Text(test, color = Ink.Text, style = MaterialTheme.typography.bodyMedium)

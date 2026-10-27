@@ -59,6 +59,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         { prefs.language },
         { prefs.mode },
         { prefs.contextTokens },
+        { prefs.internetEnabled && prefs.webAnswers },
     )
     private val store = ChatHistory(ctx)
 
@@ -170,9 +171,25 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     var cloudKeyProtected by mutableStateOf(prefs.cloudKeyProtected)
         private set
 
+    /** Whether "search for ..." is looked up and answered from the results. */
+    var webAnswers by mutableStateOf(prefs.webAnswers)
+        private set
+
+    /** What still needs fixing in the cloud settings, or null when they are fine. */
+    var cloudProblem by mutableStateOf<String?>(null)
+        private set
+
     /** The result of the last connection test, shown under the button. */
     var cloudTest by mutableStateOf<String?>(null)
         private set
+
+    init {
+        refreshCloudProblem()
+    }
+
+    private fun refreshCloudProblem() {
+        cloudProblem = cloudConfig().problem()
+    }
 
     // ------------------------------------------------------------------ runtime
 
@@ -676,12 +693,14 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         cloudEnabled = on
         prefs.cloudEnabled = on
         cloudTest = null
+        refreshCloudProblem()
     }
 
     fun chooseCloudProvider(next: CloudProvider) {
         cloudProvider = next
         prefs.cloudProvider = next
         cloudTest = null
+        refreshCloudProblem()
     }
 
 
@@ -689,12 +708,14 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         cloudBaseUrl = value
         prefs.cloudBaseUrl = value
         cloudTest = null
+        refreshCloudProblem()
     }
 
     fun editCloudModel(value: String) {
         cloudModel = value
         prefs.cloudModel = value
         cloudTest = null
+        refreshCloudProblem()
     }
 
     fun editCloudApiKey(value: String) {
@@ -702,6 +723,13 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         cloudKeySet = value.isNotBlank()
         cloudKeyProtected = prefs.cloudKeyProtected
         cloudTest = null
+        refreshCloudProblem()
+    }
+
+    /** Turns background web answers on or off. */
+    fun chooseWebAnswers(on: Boolean) {
+        webAnswers = on
+        prefs.webAnswers = on
     }
 
     fun clearCloudApiKey() = editCloudApiKey("")
@@ -711,6 +739,11 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     fun testCloud() {
         if (!cloudEnabled) {
             cloudTest = "Turn the cloud brain on first."
+            return
+        }
+        refreshCloudProblem()
+        cloudProblem?.let { why ->
+            cloudTest = why
             return
         }
         cloudTest = "Testing..."

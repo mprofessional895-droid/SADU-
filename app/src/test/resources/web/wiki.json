@@ -1,0 +1,14 @@
+{
+  "query": {
+    "pages": [
+      {
+        "title": "Python (programming language)",
+        "extract": "Python is a high-level, general-purpose programming language that emphasizes code readability, simplicity, and ease-of-writing with the use of significant indentation, an extensive (\"batteries-included\") standard library, and garbage collection. Python supports multiple programming paradigms but with an emphasis on object-oriented programming and dynamic typing.\nGuido van Rossum began working on P"
+      },
+      {
+        "title": "Outline of the Python programming language",
+        "extract": "The following outline is provided as an overview of and topical guide to Python:\nPython is a general-purpose, interpreted, object-oriented, functional, multi-paradigm, and dynamically typed programming language known for its emphasis on code readability\nand broad standard library. Python was created by Guido van Rossum and first released in 1991. It emphasizes code readability and developer produc"
+      }
+    ]
+  }
+}

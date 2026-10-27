@@ -35,6 +35,18 @@ class Actions(
     private val accessibility: () -> JarvisAccessibilityService?,
 ) {
 
+    /**
+     * The query when the message reads as "search about X" / "google X" / "look up X",
+     * or null. It only ever sees text that already looks like a command, so ordinary
+     * conversation cannot be mistaken for a search.
+     */
+    fun searchQuery(raw: String): String? {
+        val cmd = CommandParser.commandText(raw.trim()) ?: return null
+        val found = Regex("^(?:search(?: the web| online)?(?: for| about)?|google|look up)\\s+(.+)$")
+            .find(cmd) ?: return null
+        return found.groupValues[1].trim().takeIf { it.isNotBlank() }
+    }
+
     /** Returns a reply if the text matched a rule, or null if it is normal chat. */
     fun tryHandle(raw: String): String? = handle(raw, chatOnly = false)
 
@@ -103,8 +115,11 @@ class Actions(
         Regex("^(?:install|download)\\s+(?:the\\s+)?(?:app\\s+)?(.+)$").find(cmd)?.let {
             return installApp(it.groupValues[1])
         }
-        Regex("^(?:search|google|look up|search the web for|search for)\\s+(.+)$").find(cmd)?.let {
-            return webSearch(it.groupValues[1])
+        searchQuery(cmd)?.let { query ->
+            // With background answers on, the Assistant looks the question up and answers
+            // from the results; opening a browser tab is the fallback.
+            if (prefs.webAnswers) return null
+            return webSearch(query)
         }
         Regex("^(?:open|go to)\\s+((?:https?://|www\\.)\\S+)$").find(cmd)?.let {
             return openUrl(it.groupValues[1])

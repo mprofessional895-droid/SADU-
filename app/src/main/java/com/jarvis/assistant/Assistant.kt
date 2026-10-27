@@ -25,6 +25,10 @@ class Assistant(
     private val mode: () -> Mode = { Mode.Default },
     /** The model's context window, from Settings. */
     private val contextTokens: () -> Int = { ContextBudget.Default },
+    /** Whether a "search for ..." may be looked up here and answered from the results. */
+    private val webAnswers: () -> Boolean = { false },
+    /** How a page is fetched. Swapped in tests so no connection is needed. */
+    private val fetch: (String) -> String = WebSearch.live(),
 ) {
     private val history = ArrayList<Turn>()
 
@@ -58,6 +62,13 @@ class Assistant(
      */
     fun respond(text: String, onDelta: (String) -> Unit = {}): String {
         val current = mode()
+
+        // "search about X": look it up in the background and answer from what came back.
+        if (webAnswers()) {
+            actions.searchQuery(text)?.let { query ->
+                webAnswer(text, query, current, onDelta)?.let { return it }
+            }
+        }
 
         try {
             val ruled =
@@ -96,6 +107,44 @@ class Assistant(
     }
 
     /** Instructions, the turns that fit the window, and the new message. */
+    /**
+     * Fetches the results, asks the model to answer from them, and returns that answer.
+     * Null means "I could not do this", and the normal path (which opens the browser)
+     * takes over.
+     */
+    private fun webAnswer(
+        text: String,
+        query: String,
+        current: Mode,
+        onDelta: (String) -> Unit,
+    ): String? {
+        val hits = try {
+            WebSearch.search(query, fetch)
+        } catch (_: Throwable) {
+            return null
+        }
+        if (hits.isEmpty()) return null
+
+        if (brain.isReady) {
+            val enriched = WebSearch.digest(query, hits) + "\n\nMy question: " + text
+            val raw = try {
+                brain.generateStream(requestFor(enriched, current), onDelta)
+            } catch (e: Throwable) {
+                null
+            }
+            val answer = raw?.let { cleanChat(it) }.orEmpty()
+            if (answer.isNotBlank() && parseToolCall(raw.orEmpty()) == null) {
+                remember(text, answer)
+                return answer
+            }
+        }
+
+        // Nothing to summarise with: read out what was found rather than nothing at all.
+        val spoken = WebSearch.readable(query, hits)
+        remember(text, spoken)
+        return spoken
+    }
+
     private fun requestFor(text: String, current: Mode): LlmRequest {
         val menu = if (current == Mode.Control) tools.menu() else ""
         val instructions = Prompt.system(current, memory.asContext(), languageName(), menu)
