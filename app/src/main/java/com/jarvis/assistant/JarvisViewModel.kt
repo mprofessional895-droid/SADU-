@@ -60,6 +60,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         { prefs.language },
         { prefs.mode },
         { prefs.contextTokens },
+        { prefs.replyLength },
         { prefs.internetEnabled && prefs.webAnswers },
     )
     private val store = ChatHistory(ctx)
@@ -160,6 +161,9 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The window the on-device model actually accepted, once it is loaded. */
     var contextEffective by mutableStateOf(0)
+
+    /** How long Jarvis should make its answers. */
+    var replyLength by mutableStateOf(prefs.replyLength)
         private set
 
     var cloudEnabled by mutableStateOf(prefs.cloudEnabled)
@@ -404,14 +408,24 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             // rule is not a model at all, so it explains nothing.
             val usedCloud = assistant.answeredWithModel && router.lastUsed != localBrain.name
             val fallback = router.lastFallback
-            errorText = when {
-                fallback != null -> "Cloud model unavailable ($fallback) - answered on the device."
-                else -> cloudSkipNote(
-                    cloudEnabled = prefs.cloudEnabled,
-                    problem = cloudConfig().problem(),
-                    usedCloud = usedCloud,
-                )
-            }
+            errorText = listOfNotNull(
+                if (assistant.lastReplyTruncated) {
+                    "This answer stopped at the length limit. Choose Long under Reply length, " +
+                        "or ask for the rest."
+                } else {
+                    null
+                },
+                when {
+                    fallback != null ->
+                        "Cloud model unavailable ($fallback) - answered on the device."
+
+                    else -> cloudSkipNote(
+                        cloudEnabled = prefs.cloudEnabled,
+                        problem = cloudConfig().problem(),
+                        usedCloud = usedCloud,
+                    )
+                },
+            ).joinToString(" ").ifEmpty { null }
             persist()
             when (ReplyClassifier.of(reply)) {
                 ReplyKind.Failure -> fail(reply, keepReply = true)
@@ -695,6 +709,12 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         engine.close()
     }
 
+    fun chooseReplyLength(length: ReplyLength) {
+        if (length == replyLength) return
+        replyLength = length
+        prefs.replyLength = length
+    }
+
     fun chooseContextTokens(tokens: Int) {
         val clamped = ContextBudget.clamp(tokens)
         if (clamped == contextTokens) return
@@ -787,7 +807,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         baseUrl = prefs.cloudBaseUrl,
         model = prefs.cloudModel,
         apiKey = prefs.cloudApiKey,
-        maxTokens = prefs.cloudMaxTokens,
+        maxTokens = replyLength.tokens,
     )
 
     /**

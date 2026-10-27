@@ -25,6 +25,11 @@ class BrainRouter(
     var lastFallback: String? = null
         private set
 
+    /** Whether the brain that answered last stopped at its output limit. */
+    @Volatile
+    override var lastReplyTruncated: Boolean = false
+        private set
+
     override val isReady: Boolean get() = local.isReady || cloudReady()
 
     override val name: String get() = if (cloudReady()) cloud.name else local.name
@@ -37,6 +42,7 @@ class BrainRouter(
                 val reply = cloud.generateStream(request, onDelta)
                 lastUsed = cloud.name
                 lastFallback = null
+                lastReplyTruncated = cloud.lastReplyTruncated
                 return reply
             } catch (e: Throwable) {
                 lastFallback = reason(e)
@@ -44,6 +50,7 @@ class BrainRouter(
         }
         val reply = local.generateStream(request, onDelta)
         lastUsed = local.name
+        lastReplyTruncated = local.lastReplyTruncated
         return reply
     }
 

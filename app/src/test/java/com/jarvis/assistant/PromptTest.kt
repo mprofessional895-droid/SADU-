@@ -25,6 +25,43 @@ class PromptTest {
     }
 
     @Test
+    fun theInstructionsAskForTheChosenLength() {
+        val short = Prompt.system(Mode.Chat, facts = "", languageName = "", length = ReplyLength.Short)
+        val long = Prompt.system(Mode.Chat, facts = "", languageName = "", length = ReplyLength.Long)
+
+        assertTrue(short.contains(ReplyLength.Short.instruction))
+        assertTrue(long.contains(ReplyLength.Long.instruction))
+        assertNotEquals(short, long)
+        assertTrue("the user's own ask wins over the setting", long.contains("do what the user asks"))
+    }
+
+    @Test
+    fun aLongPromptNeverEatsTheUsersWords() {
+        val long = "RULES ".repeat(600)
+        val text = Prompt.local(long, emptyList(), "text mom I'm late")
+
+        assertTrue("the user's own words must survive", text.contains("text mom I'm late"))
+        assertTrue("the instructions are still there, just shorter", text.contains("RULES"))
+    }
+
+    @Test
+    fun aLongPromptDoesNotEatTheFirstTurnEither() {
+        val long = "RULES ".repeat(600)
+        val text = Prompt.local(long, listOf(Turn("hi there", "hello")), "again")
+
+        assertTrue(text.contains("hi there"))
+        assertTrue(text.contains("again"))
+    }
+
+    @Test
+    fun theOldBrevityRuleIsGone() {
+        val text = Prompt.system(Mode.Chat, facts = "", languageName = "")
+
+        assertFalse(text.contains("a sentence or two for simple things"))
+        assertTrue("detail is asked for when the question needs it", text.contains("proper detail"))
+    }
+
+    @Test
     fun factsAndLanguageAreIncluded() {
         val text = Prompt.system(Mode.Chat, facts = "the user is Asha", languageName = "Hindi")
         assertTrue(text.contains("the user is Asha"))

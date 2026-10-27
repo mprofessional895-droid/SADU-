@@ -24,15 +24,17 @@ object Prompt {
     private const val PERSONA =
         "You are Jarvis, a warm, capable assistant running privately on the user's Android phone. " +
             "You talk with your user like a friend: kind, curious and useful. Answer in the same " +
-            "language the user uses, keep replies natural - a sentence or two for simple things, " +
-            "more when the user wants detail - and never invent facts you are not sure about."
+            "language the user uses, answer as fully as the question deserves - short when the " +
+            "question is small, and proper detail when it asks for an explanation, a plan or a " +
+            "comparison - and never invent facts you are not sure about."
 
     fun chat(
         facts: String,
         languageName: String,
         turns: List<Turn>,
         text: String,
-    ): String = local(system(Mode.Chat, facts, languageName), turns, text)
+        length: ReplyLength = ReplyLength.Default,
+    ): String = local(system(Mode.Chat, facts, languageName, length = length), turns, text)
 
     fun control(
         facts: String,
@@ -40,12 +42,21 @@ object Prompt {
         languageName: String,
         turns: List<Turn>,
         text: String,
-    ): String = local(system(Mode.Control, facts, languageName, menu), turns, text)
+        length: ReplyLength = ReplyLength.Default,
+    ): String = local(system(Mode.Control, facts, languageName, menu, length), turns, text)
 
     /** Instructions only - the system role for a cloud model. */
-    fun system(mode: Mode, facts: String, languageName: String, menu: String = ""): String {
+    fun system(
+        mode: Mode,
+        facts: String,
+        languageName: String,
+        menu: String = "",
+        length: ReplyLength = ReplyLength.Default,
+    ): String {
         val sb = StringBuilder()
         sb.append(PERSONA)
+        sb.append(' ').append(length.instruction)
+        sb.append(" If the user asks for a different length or shape of answer, do what the user asks.\n\n")
         appendLanguage(sb, languageName)
         if (mode == Mode.Chat) {
             sb.append(" You are in Chat mode right now, so you can only talk. You cannot touch the ")
@@ -104,11 +115,12 @@ object Prompt {
         val sb = StringBuilder()
         val head = instructions.trim()
         if (turns.isEmpty()) {
-            sb.append(userTurn(join(head, text), MESSAGE_CAP))
+            sb.append(turnWithPrompt(head, text, MESSAGE_CAP))
         } else {
             turns.forEachIndexed { index, (user, reply) ->
-                val said = if (index == 0) join(head, user) else user
-                sb.append(userTurn(said, MESSAGE_CAP))
+                val said = if (index == 0) turnWithPrompt(head, user, MESSAGE_CAP)
+                else userTurn(user, MESSAGE_CAP)
+                sb.append(said)
                 sb.append(TURN_MODEL).append(reply.trim().take(HISTORY_CAP)).append("\n").append(TURN_END)
             }
             sb.append(userTurn(text, MESSAGE_CAP))
@@ -118,6 +130,17 @@ object Prompt {
 
     private fun userTurn(content: String, cap: Int): String =
         TURN_USER + content.trim().take(cap) + "\n" + TURN_END
+
+    /**
+     * Instructions and one spoken line in the same turn, with the instructions giving way:
+     * a long prompt must never trim away the words the user actually said.
+     */
+    private fun turnWithPrompt(head: String, said: String, cap: Int): String {
+        val body = said.trim()
+        // The two newlines that join them count against the cap as well.
+        val room = (cap - body.length - 2).coerceAtLeast(cap / 2)
+        return userTurn(join(head.take(room).trim(), body), cap)
+    }
 
     private fun join(head: String, body: String): String =
         if (head.isEmpty()) body else head + "\n\n" + body

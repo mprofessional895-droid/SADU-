@@ -234,6 +234,35 @@ object CloudReply {
         ""
     }
 
+    /**
+     * True when this chunk - or a whole reply - says the model stopped because it reached
+     * the output limit. That is the difference between "the answer ended" and "the answer
+     * was cut off", and each provider words it differently.
+     */
+    fun hitTokenLimit(provider: CloudProvider, data: String): Boolean = try {
+        val json = JSONObject(data)
+        when (provider) {
+            CloudProvider.Compatible -> json.optJSONArray("choices")
+                ?.optJSONObject(0)
+                ?.optString("finish_reason") == "length"
+
+            CloudProvider.Anthropic ->
+                json.optString("stop_reason") == "max_tokens" ||
+                    json.optJSONObject("delta")?.optString("stop_reason") == "max_tokens"
+
+            CloudProvider.Gemini -> {
+                var hit = false
+                val list = json.optJSONArray("candidates")
+                for (i in 0 until (list?.length() ?: 0)) {
+                    if (list?.optJSONObject(i)?.optString("finishReason") == "MAX_TOKENS") hit = true
+                }
+                hit
+            }
+        }
+    } catch (_: Throwable) {
+        false
+    }
+
     /** The text in one streamed chunk, or null when the chunk carries none. */
     fun delta(provider: CloudProvider, data: String): String? = try {
         val json = JSONObject(data)
@@ -301,12 +330,22 @@ class CloudBrain(private val config: () -> CloudConfig) : Brain {
 
     override val isReady: Boolean get() = config().isUsable
 
+    /** Set when the provider says it stopped because the reply hit max_tokens. */
+    @Volatile
+    override var lastReplyTruncated: Boolean = false
+        private set
+
+    private fun markStart() {
+        lastReplyTruncated = false
+    }
+
     override val name: String
         get() = "Cloud (${config().model.ifBlank { "not set" }})"
 
     override fun generate(request: LlmRequest): String {
         val cfg = config()
         cfg.problem()?.let { throw IOException(it) }
+        lastReplyTruncated = false
         val body = CloudRequest.body(cfg, request, stream = false)
         val text = post(cfg, CloudRequest.url(cfg, stream = false), body, null)
         if (text.isBlank()) throw IOException("The cloud model sent an empty reply")
@@ -316,6 +355,7 @@ class CloudBrain(private val config: () -> CloudConfig) : Brain {
     override fun generateStream(request: LlmRequest, onDelta: (String) -> Unit): String {
         val cfg = config()
         cfg.problem()?.let { throw IOException(it) }
+        lastReplyTruncated = false
         val body = CloudRequest.body(cfg, request, stream = true)
         val text = post(cfg, CloudRequest.url(cfg, stream = true), body, onDelta)
         // A server that ignores "stream" answers with the whole body at once.
@@ -353,6 +393,7 @@ class CloudBrain(private val config: () -> CloudConfig) : Brain {
 
             if (onDelta == null) {
                 val whole = conn.inputStream.bufferedReader().use { it.readText() }
+                lastReplyTruncated = CloudReply.hitTokenLimit(cfg.provider, whole)
                 return CloudReply.text(cfg.provider, whole)
             }
             return readStream(cfg, conn, onDelta)
@@ -371,6 +412,7 @@ class CloudBrain(private val config: () -> CloudConfig) : Brain {
             while (true) {
                 val line = reader.readLine() ?: break
                 val data = Sse.payload(line) ?: continue
+                if (CloudReply.hitTokenLimit(cfg.provider, data)) lastReplyTruncated = true
                 val delta = CloudReply.delta(cfg.provider, data) ?: continue
                 out.append(delta)
                 onDelta(delta)

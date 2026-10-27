@@ -1,6 +1,7 @@
 package com.jarvis.assistant.brain
 
 import com.jarvis.assistant.Mode
+import com.jarvis.assistant.ReplyLength
 import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -127,6 +128,29 @@ class CloudProviderLiveTest {
         assertTrue(request, request.contains("\"systemInstruction\""))
         assertTrue(request, request.contains("\"generationConfig\""))
         assertTrue("Gemini calls the assistant a model", request.contains("\"role\":\"user\""))
+    }
+
+    @Test
+    fun theChosenReplyLengthIsWhatTheProviderIsTold() {
+        val base = stub(
+            "{" + quote + "choices" + quote + ":[{" + quote + "message" + quote + ":{" +
+                quote + "content" + quote + ":" + quote + "Hi" + quote + "}," +
+                quote + "finish_reason" + quote + ":" + quote + "stop" + quote + "}]}",
+        )
+        val cfg = CloudConfig(
+            provider = CloudProvider.Compatible,
+            baseUrl = base,
+            model = "gpt-4o-mini",
+            apiKey = "sk-test",
+            maxTokens = ReplyLength.Long.tokens,
+        )
+        assertEquals("Hi", CloudBrain { cfg }.generate(question()))
+
+        val request = seen.last()
+        assertTrue(
+            request,
+            request.contains("\"max_tokens\":" + ReplyLength.Long.tokens),
+        )
     }
 
     @Test

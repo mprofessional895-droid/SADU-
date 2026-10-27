@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.jarvis.assistant.AssistantText
 import com.jarvis.assistant.JarvisViewModel
 import com.jarvis.assistant.Mode
+import com.jarvis.assistant.ReplyLength
 import com.jarvis.assistant.brain.CloudProvider
 import com.jarvis.assistant.READY_NOTE
 import com.jarvis.assistant.ui.Dimens
@@ -99,6 +100,7 @@ data class SettingsUiState(
     val versionLine: String = "",
     val contextTokens: Int = 4096,
     val contextEffective: Int = 0,
+    val replyLength: ReplyLength = ReplyLength.Default,
     val cloudEnabled: Boolean = false,
     val cloudProvider: CloudProvider = CloudProvider.Compatible,
     val cloudBaseUrl: String = "",
@@ -142,6 +144,7 @@ fun SettingsScreen(vm: JarvisViewModel) {
             versionLine = vm.versionLine,
             contextTokens = vm.contextTokens,
             contextEffective = vm.contextEffective,
+            replyLength = vm.replyLength,
             cloudEnabled = vm.cloudEnabled,
             cloudProvider = vm.cloudProvider,
             cloudBaseUrl = vm.cloudBaseUrl,
@@ -166,6 +169,7 @@ fun SettingsScreen(vm: JarvisViewModel) {
             vm.deleteAllChats()
         },
         onContextTokens = { vm.chooseContextTokens(it) },
+        onReplyLength = { vm.chooseReplyLength(it) },
         onCloudEnabled = { vm.chooseCloudEnabled(it) },
         onCloudProvider = { vm.chooseCloudProvider(it) },
         onCloudBaseUrl = { vm.editCloudBaseUrl(it) },
@@ -191,6 +195,7 @@ fun SettingsContent(
     onLanguage: (String) -> Unit,
     onDeleteEverything: () -> Unit,
     onContextTokens: (Int) -> Unit = {},
+    onReplyLength: (ReplyLength) -> Unit = {},
     onCloudEnabled: (Boolean) -> Unit = {},
     onCloudProvider: (CloudProvider) -> Unit = {},
     onCloudBaseUrl: (String) -> Unit = {},
@@ -286,6 +291,8 @@ fun SettingsContent(
                     current = state.contextTokens,
                     effective = state.contextEffective,
                     onPick = onContextTokens,
+                    length = state.replyLength,
+                    onLength = onReplyLength,
                 )
             }
         }

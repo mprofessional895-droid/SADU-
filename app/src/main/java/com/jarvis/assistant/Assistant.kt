@@ -25,6 +25,8 @@ class Assistant(
     private val mode: () -> Mode = { Mode.Default },
     /** The model's context window, from Settings. */
     private val contextTokens: () -> Int = { ContextBudget.Default },
+    /** How long answers should be, from Settings. */
+    private val replyLength: () -> ReplyLength = { ReplyLength.Default },
     /** Whether a "search for ..." may be looked up here and answered from the results. */
     private val webAnswers: () -> Boolean = { false },
     /** How a page is fetched. Swapped in tests so no connection is needed. */
@@ -64,8 +66,13 @@ class Assistant(
     var answeredWithModel = false
         private set
 
+    /** True when the last model answer stopped at the output limit, not at the end. */
+    var lastReplyTruncated = false
+        private set
+
     fun respond(text: String, onDelta: (String) -> Unit = {}): String {
         answeredWithModel = false
+        lastReplyTruncated = false
         val current = mode()
 
         // "search about X": look it up in the background and answer from what came back.
@@ -108,6 +115,7 @@ class Assistant(
         gate?.finish()
         val reply = cleanChat(raw)
         answeredWithModel = true
+        lastReplyTruncated = brain.lastReplyTruncated
         remember(text, reply)
         return reply
     }
@@ -154,7 +162,8 @@ class Assistant(
 
     private fun requestFor(text: String, current: Mode): LlmRequest {
         val menu = if (current == Mode.Control) tools.menu() else ""
-        val instructions = Prompt.system(current, memory.asContext(), languageName(), menu)
+        val instructions =
+            Prompt.system(current, memory.asContext(), languageName(), menu, replyLength())
         val fixed = ContextBudget.estimate(instructions) + ContextBudget.estimate(text)
         val window = ContextBudget.clamp(contextTokens())
         return LlmRequest(
