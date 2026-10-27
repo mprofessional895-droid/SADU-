@@ -16,6 +16,7 @@ import com.jarvis.assistant.brain.BrainRouter
 import com.jarvis.assistant.brain.CloudBrain
 import com.jarvis.assistant.brain.CloudConfig
 import com.jarvis.assistant.brain.CloudProvider
+import com.jarvis.assistant.brain.cloudSkipNote
 import com.jarvis.assistant.brain.LlmRequest
 import com.jarvis.assistant.brain.OfflineBrain
 import com.jarvis.assistant.control.JarvisAccessibilityService
@@ -77,6 +78,9 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     var micLevel by mutableStateOf(0f)
         private set
     var errorText by mutableStateOf<String?>(null)
+
+    /** Which model answered the last reply, so the choice of brain is never a guess. */
+    var answeredBy by mutableStateOf<String?>(null)
         private set
     var modelNote by mutableStateOf<String?>(null)
         private set
@@ -367,6 +371,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         val text = raw.trim()
         if (text.isEmpty() || aiState == AiState.Processing || aiState == AiState.Listening) return
         errorText = null
+        answeredBy = null
         voice.stopSpeaking()
         composerText = ""
         push(ChatMsg(text, fromUser = true))
@@ -394,8 +399,17 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             if (buffer.length == 0) buffer.append(reply)
             ticker.join()
             push(ChatMsg(reply, fromUser = false))
-            router.lastFallback?.let { why ->
-                errorText = "Cloud model unavailable ($why) - answered on the device."
+            answeredBy = if (assistant.answeredWithModel) "Answered by " + router.lastUsed else null
+            val usedCloud = router.lastUsed != localBrain.name
+            val fallback = router.lastFallback
+            errorText = when {
+                fallback != null -> "Cloud model unavailable ($fallback) - answered on the device."
+                else -> cloudSkipNote(
+                    cloudEnabled = prefs.cloudEnabled,
+                    internetAllowed = prefs.internetEnabled,
+                    problem = cloudConfig().problem(),
+                    usedCloud = usedCloud,
+                )
             }
             persist()
             when (ReplyClassifier.of(reply)) {
@@ -746,6 +760,11 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             cloudTest = why
             return
         }
+        if (!prefs.internetEnabled) {
+            cloudTest = "The cloud model needs internet access. Turn on \"Allow internet " +
+                "access\" in Connection, then test again - otherwise the phone answers."
+            return
+        }
         cloudTest = "Testing..."
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -775,8 +794,11 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         maxTokens = prefs.cloudMaxTokens,
     )
 
-    /** Cloud is used when it is switched on, the internet is allowed, and it is set up. */
-    private fun cloudWanted(): Boolean =
-        prefs.cloudEnabled && prefs.internetEnabled && cloudConfig().isUsable
+    /**
+     * Switching the cloud model on is itself the consent to send chats to that provider,
+     * so it does not also need the "allow internet access" switch - that one is for the
+     * phone tools (search, links, installing apps).
+     */
+    private fun cloudWanted(): Boolean = cloudConfig().shouldAnswer(prefs.cloudEnabled)
 
 }

@@ -64,6 +64,13 @@ data class CloudConfig(
     val isUsable: Boolean get() = problem() == null
 
     /**
+     * True when a reply should come from this cloud model. Switching it on is the consent
+     * to send chats to the provider, so the separate "allow internet access" switch - which
+     * is about the phone tools - has no say here.
+     */
+    fun shouldAnswer(enabled: Boolean): Boolean = enabled && isUsable
+
+    /**
      * A human reason this setup cannot be used yet, or null when it is fine. The same
      * wording is shown under the fields and thrown if a call is made anyway.
      */

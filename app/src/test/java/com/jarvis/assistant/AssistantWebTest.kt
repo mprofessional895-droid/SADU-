@@ -33,8 +33,11 @@ class AssistantWebTest {
     ) : Brain {
         override val name: String get() = "fake"
         var last: LlmRequest? = null
+        var asked = 0
+            private set
 
         override fun generate(request: LlmRequest): String {
+            asked++
             last = request
             if (fails) throw IllegalStateException("model exploded")
             return reply
@@ -130,6 +133,30 @@ class AssistantWebTest {
         assertEquals("Hello!", assistant(brain).respond("how are you today"))
         assertTrue("nothing was fetched", pages.isEmpty())
         assertTrue(brain.last?.user?.contains("[web results") != true)
+    }
+
+    @Test
+    fun aModelAnswerIsMarkedAsAModelAnswer() {
+        val brain = FakeBrain("A normal reply.")
+        val sut = assistant(brain)
+        sut.respond("how are you today")
+        assertTrue("the app must be able to say the model answered", sut.answeredWithModel)
+    }
+
+    @Test
+    fun aBuiltinRuleIsNotAModelAnswer() {
+        val brain = FakeBrain("A normal reply.")
+        val sut = assistant(brain)
+        sut.respond("what is the time")
+        assertFalse("a rule answered, so no model was used", sut.answeredWithModel)
+        assertEquals(0, brain.asked)
+    }
+
+    @Test
+    fun aWebAnswerIsAModelAnswer() {
+        val sut = assistant(FakeBrain("Answered from the web results."))
+        sut.respond("search about python programming")
+        assertTrue(sut.answeredWithModel)
     }
 
     @Test
