@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Jarvis</string>
-    <string name="accessibility_label">Jarvis screen control</string>
-    <string name="accessibility_description">Lets Jarvis tap, type, scroll and read what is on your screen when you ask it to. Jarvis only uses this after you give a command.</string>
+    <string name="app_name">SADU</string>
+    <string name="accessibility_label">Sadu screen control</string>
+    <string name="accessibility_description">Lets Sadu tap, type, scroll and read what is on your screen when you ask it to. Sadu only uses this after you give a command.</string>
 </resources>

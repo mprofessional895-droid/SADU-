@@ -1,4 +1,4 @@
-// The only bridge between Jarvis and llama.cpp. Deliberately small: load a model, run a prompt,
+// The only bridge between Sadu and llama.cpp. Deliberately small: load a model, run a prompt,
 // stream the pieces back to Kotlin, stop on request. Everything else (history, prompt building,
 // settings) stays in Kotlin where it is testable.
 #include <jni.h>
@@ -14,7 +14,7 @@
 
 #include "llama.h"
 
-#define LOG_TAG "JarvisLlama"
+#define LOG_TAG "SaduLlama"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
@@ -69,7 +69,7 @@ Session *sessionOf(jlong handle) {
 extern "C" {
 
 JNIEXPORT jlong JNICALL
-Java_com_jarvis_assistant_brain_LlamaEngine_nativeLoad(
+Java_com_sadu_assistant_brain_LlamaEngine_nativeLoad(
         JNIEnv *env, jobject, jstring path, jint nCtx, jint nThreads, jint nBatch) {
     clearError();
     ensureBackend();
@@ -123,7 +123,7 @@ Java_com_jarvis_assistant_brain_LlamaEngine_nativeLoad(
 }
 
 JNIEXPORT void JNICALL
-Java_com_jarvis_assistant_brain_LlamaEngine_nativeFree(JNIEnv *, jobject, jlong handle) {
+Java_com_sadu_assistant_brain_LlamaEngine_nativeFree(JNIEnv *, jobject, jlong handle) {
     Session *session = sessionOf(handle);
     if (session == nullptr) return;
     session->cancelled.store(true);
@@ -133,20 +133,20 @@ Java_com_jarvis_assistant_brain_LlamaEngine_nativeFree(JNIEnv *, jobject, jlong 
 }
 
 JNIEXPORT void JNICALL
-Java_com_jarvis_assistant_brain_LlamaEngine_nativeCancel(JNIEnv *, jobject, jlong handle) {
+Java_com_sadu_assistant_brain_LlamaEngine_nativeCancel(JNIEnv *, jobject, jlong handle) {
     Session *session = sessionOf(handle);
     if (session != nullptr) session->cancelled.store(true);
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_jarvis_assistant_brain_LlamaEngine_nativeLastError(JNIEnv *env, jobject) {
+Java_com_sadu_assistant_brain_LlamaEngine_nativeLastError(JNIEnv *env, jobject) {
     return toJava(env, g_error);
 }
 
 // "description;parameters;sizeInBytes;trainedContext;hasChatTemplate" - one string so the UI can
 // show what is actually loaded without a second round trip.
 JNIEXPORT jstring JNICALL
-Java_com_jarvis_assistant_brain_LlamaEngine_nativeModelInfo(JNIEnv *env, jobject, jlong handle) {
+Java_com_sadu_assistant_brain_LlamaEngine_nativeModelInfo(JNIEnv *env, jobject, jlong handle) {
     Session *session = sessionOf(handle);
     if (session == nullptr) return toJava(env, "");
 
@@ -167,7 +167,7 @@ Java_com_jarvis_assistant_brain_LlamaEngine_nativeModelInfo(JNIEnv *env, jobject
 // The model's own template, applied by llama.cpp over a whole conversation. An empty string means
 // the model carries no usable template and Kotlin should fall back to the frozen Gemma one.
 JNIEXPORT jstring JNICALL
-Java_com_jarvis_assistant_brain_LlamaEngine_nativeApplyTemplate(
+Java_com_sadu_assistant_brain_LlamaEngine_nativeApplyTemplate(
         JNIEnv *env, jobject, jlong handle, jobjectArray roles, jobjectArray contents) {
     Session *session = sessionOf(handle);
     if (session == nullptr) return toJava(env, "");
@@ -212,7 +212,7 @@ Java_com_jarvis_assistant_brain_LlamaEngine_nativeApplyTemplate(
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_jarvis_assistant_brain_LlamaEngine_nativeGenerate(
+Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
         JNIEnv *env, jobject, jlong handle, jstring prompt, jfloat temperature, jint topK, jfloat topP,
         jfloat minP, jfloat repeatPenalty, jint repeatLastN, jint maxTokens, jobject sink) {
     clearError();

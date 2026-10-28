@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(jarvis-llama C CXX)
+project(sadu-llama C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,16 +51,16 @@ foreach(_target llama ggml ggml-base ggml-cpu)
     endif()
 endforeach()
 
-add_library(jarvis_llama SHARED llama_jni.cpp)
+add_library(sadu_llama SHARED llama_jni.cpp)
 
-target_compile_options(jarvis_llama PRIVATE -O3 -fvisibility=hidden)
+target_compile_options(sadu_llama PRIVATE -O3 -fvisibility=hidden)
 
-target_include_directories(jarvis_llama PRIVATE
+target_include_directories(sadu_llama PRIVATE
         ${llama_cpp_SOURCE_DIR}/include
         ${llama_cpp_SOURCE_DIR}/ggml/include)
 
 # Static, so the APK ends up with one library instead of llama plus four ggml ones.
-target_link_libraries(jarvis_llama
+target_link_libraries(sadu_llama
         llama
         ggml
         android
