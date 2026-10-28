@@ -163,3 +163,37 @@ prompt must stay under ~700 characters), `ChatPolicyTest` (what counts as a phon
 what counts as claiming one), `AssistantPhoneGuardTest` (Chat refuses it and never asks the model;
 Control still asks), `OfflineBrainStreamTest` (deltas, the template, the per-mode sampler) and
 `ChatPromptTest`.
+
+## Two engines: `.task` (MediaPipe) and `.gguf` (llama.cpp)
+
+`brain/Engine.kt` is the seam. One interface, two implementations - `LlmEngine` (MediaPipe,
+unchanged in behaviour) and `brain/LlamaEngine.kt` (llama.cpp) - and `brain/OfflineBrain.kt` wraps
+either one, so nothing above it knows which answered. `brain/SwitchableBrain.kt` is the holder
+`JarvisViewModel` swaps when the user changes engine; `Prefs.localEngine` (key `mediapipe` /
+`llama`) remembers the choice, and both model files stay on the phone, so switching back is a
+reload and nothing more. Only the chosen engine is ever loaded into memory.
+
+The template is engine-specific: `prompt/GemmaChatTemplate.kt` is Gemma's format, written by hand,
+and `prompt/ModelChatTemplate.kt` asks the loaded model for its own template through
+`llama_jni.cpp` (`llama_model_chat_template` + `llama_chat_apply_template`), falling back to
+Gemma's when the model carries none or the call fails. `brain/Gguf.kt` validates a picked file
+before it is copied (magic `GGUF`, version 2-3, then `general.architecture` / `general.name` if
+they are in the first 64 KB) - a `.task` in the `.gguf` slot is refused in a second, not after a
+700 MB copy.
+
+Native build: `app/src/main/cpp/CMakeLists.txt` fetches llama.cpp v0.7.0 through CMake
+FetchContent (pinned by `URL_HASH` sha256) and builds `libjarvis_llama.so` plus llama's own
+libraries; `app/src/main/cpp/llama_jni.cpp` is the JNI surface. It is wired into Gradle behind a
+`hasNdk` check, so a machine without the NDK still builds and ships MediaPipe-only, and
+`LlamaEngine.isAvailable` is then false with Settings saying so. On a phone, the `.gguf` engine
+adds the repetition penalty and min-p that MediaPipe has no API for.
+
+Building the native part in a constrained container needs `taskset -c 0-2` around Gradle: ninja
+otherwise spawns ~100 clang processes and the OOM killer takes the Gradle daemon. Two memory
+notes worth keeping: `-g0` on llama.cpp's targets (Android Gradle adds `-g` to everything, which
+made `libllama.so` 42 MB before stripping) and `ANDROID_STL=c++_shared`.
+
+Not verified: no `.gguf` has ever been loaded or run - there is no device and no emulator for this
+project, and the library is arm64 only. What is proved by tests is everything up to inference:
+header validation (`GgufTest`), the engine's refusals and bookkeeping (`LlamaEngineTest`), the
+template fallback (`ModelChatTemplateTest`) and the engine-agnostic brain (`OfflineBrainStreamTest`).

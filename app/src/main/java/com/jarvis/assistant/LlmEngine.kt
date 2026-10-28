@@ -4,17 +4,20 @@ import android.content.Context
 import android.net.Uri
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
+import com.jarvis.assistant.brain.Engine
 import java.io.File
 
 /**
- * Runs the Gemma model on the phone. No internet needed.
+ * Runs the Gemma model on the phone. No internet needed. This is the MediaPipe engine - the
+ * `.task` one; [com.jarvis.assistant.brain.LlamaEngine] is the `.gguf` one.
  *
  * Two things worth knowing about this layer, both of them ceilings rather than choices:
  * MediaPipe asks for the sampling it is given and nothing else - there is no repetition
  * penalty to damp a small model's loops - and `maxTokens` covers the prompt as well as the
- * reply, so the context window and the answer share one budget.
+ * reply, so the context window and the answer share one budget. That is why the reply length
+ * ([maxNewTokens]) is ignored here: it is already the prompt's problem.
  */
-open class LlmEngine(private val ctx: Context) {
+open class LlmEngine(private val ctx: Context) : Engine {
 
     private var llm: LlmInference? = null
     private var wantsTokens = ContextBudget.Default
@@ -27,22 +30,24 @@ open class LlmEngine(private val ctx: Context) {
     @Volatile
     private var cancelled = false
 
+    override val name: String get() = "On-device Gemma"
+
     /** The context window the loaded model actually accepted. */
-    val contextTokens: Int get() = loadedTokens
+    override val contextTokens: Int get() = loadedTokens
 
     private val modelFile: File get() = File(ctx.filesDir, "model.task")
 
-    fun isModelPresent(): Boolean = modelFile.exists() && modelFile.length() > 50_000_000L
+    override fun isModelPresent(): Boolean = modelFile.exists() && modelFile.length() > 50_000_000L
 
     /** Size of the imported model on disk, for the status screen. */
-    fun modelBytes(): Long = runCatching {
+    override fun modelBytes(): Long = runCatching {
         if (modelFile.exists()) modelFile.length() else 0L
     }.getOrDefault(0L)
 
-    val isLoaded: Boolean get() = llm != null
+    override val isReady: Boolean get() = llm != null
 
     @Synchronized
-    fun load(contextTokens: Int = ContextBudget.Default): Int {
+    override fun load(contextTokens: Int): Int {
         wantsTokens = ContextBudget.clamp(contextTokens)
         if (llm != null && loadedTokens == wantsTokens) return loadedTokens
         if (llm != null) close()
@@ -79,7 +84,7 @@ open class LlmEngine(private val ctx: Context) {
         return LlmInferenceSession.createFromOptions(engine, opts)
     }
 
-    open fun generate(prompt: String, sampling: Sampling = Sampling.chat()): String {
+    override fun generate(prompt: String, sampling: Sampling, maxNewTokens: Int): String {
         val engine = llm ?: throw IllegalStateException("Model is not loaded yet")
         val session = open(engine, sampling)
         try {
@@ -94,10 +99,11 @@ open class LlmEngine(private val ctx: Context) {
      * The same answer, but [onDelta] is handed each new piece as the model writes it, which
      * is what makes an on-device reply land on screen word by word instead of all at once.
      */
-    open fun generateStream(
+    override fun generateStream(
         prompt: String,
-        sampling: Sampling = Sampling.chat(),
-        onDelta: (String) -> Unit = {},
+        sampling: Sampling,
+        maxNewTokens: Int,
+        onDelta: (String) -> Unit,
     ): String {
         val engine = llm ?: throw IllegalStateException("Model is not loaded yet")
         cancelled = false
@@ -132,17 +138,17 @@ open class LlmEngine(private val ctx: Context) {
     }
 
     /** Stops the answer that is being written, if any. True when there was one. */
-    open fun cancel(): Boolean {
+    override fun cancel(): Boolean {
         val session = active ?: return false
         cancelled = true
         runCatching { session.cancelGenerateResponseAsync() }
         return true
     }
 
-    val isWriting: Boolean get() = active != null
+    override val isWriting: Boolean get() = active != null
 
     /** Copies the chosen model file into the app's private storage (one time). */
-    fun importModel(uri: Uri, onProgress: (Long) -> Unit) {
+    override fun importModel(uri: Uri, onProgress: (Long) -> Unit) {
         val tmp = File(ctx.filesDir, "model.tmp")
         val input = ctx.contentResolver.openInputStream(uri)
             ?: throw IllegalStateException("Could not open the file you picked")
@@ -167,7 +173,7 @@ open class LlmEngine(private val ctx: Context) {
         if (!tmp.renameTo(modelFile)) throw IllegalStateException("Could not save the model file")
     }
 
-    open fun close() {
+    override fun close() {
         try {
             llm?.close()
         } catch (_: Throwable) {

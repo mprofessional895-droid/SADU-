@@ -3,17 +3,45 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// The gguf engine needs the NDK to build llama.cpp. When no NDK is installed the app still builds
+// and ships, it just keeps the on-device engine it already had - see LlamaEngine.isAvailable().
+val ndkRoot = file(
+    "${System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT") ?: "${System.getProperty("user.home")}/android-sdk"}/ndk"
+)
+val hasNdk = ndkRoot.isDirectory && !(ndkRoot.list()?.isEmpty() ?: true)
+
 android {
     namespace = "com.jarvis.assistant"
     compileSdk = 34
+
+    if (hasNdk) {
+        ndkVersion = "26.1.10909125"
+    }
 
     defaultConfig {
         applicationId = "com.jarvis.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.11"
+        versionCode = 13
+        versionName = "0.12"
         ndk { abiFilters += listOf("arm64-v8a") }
+
+        if (hasNdk) {
+            externalNativeBuild {
+                cmake {
+                    arguments += listOf("-DANDROID_STL=c++_shared", "-DCMAKE_BUILD_TYPE=Release")
+                }
+            }
+        }
+    }
+
+    if (hasNdk) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = "3.22.1"
+            }
+        }
     }
 
     buildTypes {

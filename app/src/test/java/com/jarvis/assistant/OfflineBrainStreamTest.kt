@@ -21,6 +21,9 @@ class OfflineBrainStreamTest {
     /** Stands in for MediaPipe: hands out a fixed set of pieces. */
     private class FakeEngine(ctx: Context) : LlmEngine(ctx) {
         val samplings = mutableListOf<Sampling>()
+
+        /** How long each reply was allowed to be. */
+        val tokenCaps = mutableListOf<Int>()
         var prompt = ""
         var cancelled = false
             private set
@@ -29,10 +32,12 @@ class OfflineBrainStreamTest {
         override fun generateStream(
             prompt: String,
             sampling: Sampling,
+            maxNewTokens: Int,
             onDelta: (String) -> Unit,
         ): String {
             this.prompt = prompt
             samplings += sampling
+            tokenCaps += maxNewTokens
             pieces.forEach(onDelta)
             return pieces.joinToString("")
         }
@@ -71,10 +76,17 @@ class OfflineBrainStreamTest {
     }
 
     @Test
+    fun theReplyLengthReachesTheEngine() {
+        val brain = OfflineBrain(engine, length = { ReplyLength.Short })
+        brain.generateStream(request(Mode.Chat)) { }
+        assertEquals(ReplyLength.Short.tokens, engine.tokenCaps.last())
+    }
+
+    @Test
     fun chatModeUsesTheTemperatureTheUserChose() {
-        val brain = OfflineBrain(engine) { mode ->
+        val brain = OfflineBrain(engine, sampling = { mode ->
             if (mode == Mode.Chat) Sampling.chat(0.9f) else Sampling.Command
-        }
+        })
         brain.generateStream(request(Mode.Chat)) { }
         assertEquals(0.9f, engine.samplings.last().temperature, 0.001f)
 

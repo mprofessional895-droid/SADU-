@@ -12,7 +12,7 @@ import com.jarvis.assistant.Turn
  * Nothing in this file knows what a mode is. Changing it changes both modes, which is the
  * point - it is the model's format, not our policy.
  */
-object GemmaChatTemplate {
+object GemmaChatTemplate : ChatTemplate {
 
     const val VERSION = "gemma-template-1"
 
@@ -25,7 +25,7 @@ object GemmaChatTemplate {
     const val HISTORY_CAP = 1500
 
     /** Instructions, the conversation so far, and the new message, in Gemma's format. */
-    fun build(instructions: String, turns: List<Turn>, text: String): String {
+    override fun build(instructions: String, turns: List<Turn>, text: String): String {
         val sb = StringBuilder()
         val head = instructions.trim()
         if (turns.isEmpty()) {

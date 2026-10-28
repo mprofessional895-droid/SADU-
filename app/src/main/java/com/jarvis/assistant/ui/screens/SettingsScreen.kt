@@ -41,6 +41,7 @@ import com.jarvis.assistant.Mode
 import com.jarvis.assistant.ReplyLength
 import com.jarvis.assistant.Sampling
 import com.jarvis.assistant.brain.CloudProvider
+import com.jarvis.assistant.brain.LocalEngine
 import com.jarvis.assistant.prompt.ChatStyle
 import com.jarvis.assistant.READY_NOTE
 import com.jarvis.assistant.ui.Dimens
@@ -84,6 +85,10 @@ data class SettingsUiState(
     val modelPresent: Boolean = false,
     val modelNote: String? = null,
     val modelBytes: Long = 0L,
+    val engine: LocalEngine = LocalEngine.Default,
+    val engineAvailable: Boolean = false,
+    val modelLabel: String = "",
+    val modelCopyPercent: Int = -1,
     val speakOn: Boolean = true,
     val internetOn: Boolean = false,
     val wakeOn: Boolean = false,
@@ -122,6 +127,10 @@ fun SettingsScreen(vm: JarvisViewModel) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.importModel(uri)
     }
+    // Its own picker: the MediaPipe one and the llama.cpp one accept different files.
+    val ggufPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importGguf(uri)
+    }
     LaunchedEffect(Unit) { vm.refreshRuntime() }
 
     SettingsContent(
@@ -131,6 +140,10 @@ fun SettingsScreen(vm: JarvisViewModel) {
             modelPresent = vm.modelPresent,
             modelNote = vm.modelNote,
             modelBytes = vm.modelBytes,
+            engine = vm.localEngineChoice,
+            engineAvailable = vm.engineAvailable,
+            modelLabel = vm.modelLabel,
+            modelCopyPercent = vm.modelCopyPercent,
             speakOn = vm.speakOn,
             internetOn = vm.internetOn,
             wakeOn = vm.wakeOn,
@@ -165,6 +178,8 @@ fun SettingsScreen(vm: JarvisViewModel) {
         ),
         onMode = { vm.chooseMode(it) },
         onImportModel = { picker.launch(arrayOf("*/*")) },
+        onImportGguf = { ggufPicker.launch(arrayOf("*/*")) },
+        onChooseEngine = { vm.chooseEngine(it) },
         onReloadModel = { vm.loadModel() },
         onSpeak = { vm.setSpeak(it) },
         onWake = { vm.setWake(it) },
@@ -198,6 +213,8 @@ fun SettingsContent(
     onMode: (Mode) -> Unit,
     onImportModel: () -> Unit,
     onReloadModel: () -> Unit,
+    onImportGguf: () -> Unit = {},
+    onChooseEngine: (LocalEngine) -> Unit = {},
     onSpeak: (Boolean) -> Unit,
     onWake: (Boolean) -> Unit,
     onInternet: (Boolean) -> Unit,
@@ -266,34 +283,20 @@ fun SettingsContent(
         item(key = "model") {
             Column {
                 SectionLabel("The assistant's brain", modifier = Modifier.padding(bottom = 8.dp))
-                SurfaceCard {
-                    KeyValueRow("Model", if (state.modelReady) "Loaded and running" else "Not running")
-                    HairlineDivider()
-                    KeyValueRow("Model file", if (state.modelPresent) AssistantText.bytes(state.modelBytes) else "Not imported")
-                    if (state.modelNote != null && state.modelNote != READY_NOTE) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = state.modelNote,
-                            color = Ink.TextDim,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        GhostButton(
-                            text = if (state.modelPresent) "Replace file" else "Import model",
-                            onClick = onImportModel,
-                        )
-                        GhostButton(text = "Reload", onClick = onReloadModel, enabled = state.modelPresent)
-                    }
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = "Jarvis runs a Gemma model on this phone, so it works with no connection. " +
-                            "Import the .task file once and it stays here.",
-                        color = Ink.TextDim,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+                EngineCard(
+                    choice = state.engine,
+                    available = state.engineAvailable,
+                    ready = state.modelReady,
+                    present = state.modelPresent,
+                    bytes = state.modelBytes,
+                    label = state.modelLabel,
+                    note = state.modelNote?.takeIf { it != READY_NOTE },
+                    copyPercent = state.modelCopyPercent,
+                    onChoose = onChooseEngine,
+                    onImportTask = onImportModel,
+                    onImportGguf = onImportGguf,
+                    onReload = onReloadModel,
+                )
             }
         }
 

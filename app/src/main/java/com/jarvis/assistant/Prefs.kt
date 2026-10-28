@@ -2,6 +2,7 @@ package com.jarvis.assistant
 
 import android.content.Context
 import com.jarvis.assistant.brain.CloudProvider
+import com.jarvis.assistant.brain.LocalEngine
 import com.jarvis.assistant.brain.cloudProviderFrom
 import com.jarvis.assistant.prompt.ChatPrompt
 import com.jarvis.assistant.prompt.ChatStyle
@@ -55,6 +56,14 @@ class Prefs(ctx: Context) {
     var contextTokens: Int
         get() = ContextBudget.clamp(p.getInt("context", ContextBudget.Default))
         set(v) = p.edit().putInt("context", ContextBudget.clamp(v)).apply()
+
+    /**
+     * Which on-device engine runs the model: MediaPipe's `.task` bundle or llama.cpp's `.gguf`
+     * file. Both are kept, so switching back is instant. Anything unreadable means MediaPipe.
+     */
+    var localEngine: LocalEngine
+        get() = LocalEngine.of(p.getString("local_engine", null))
+        set(v) = p.edit().putString("local_engine", v.key).apply()
 
     /** Whether Jarvis may look something up and answer from it, instead of opening a browser. */
     var webAnswers: Boolean

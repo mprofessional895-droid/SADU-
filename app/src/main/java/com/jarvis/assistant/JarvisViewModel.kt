@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -17,10 +18,17 @@ import com.jarvis.assistant.brain.CloudBrain
 import com.jarvis.assistant.brain.CloudConfig
 import com.jarvis.assistant.brain.CloudProvider
 import com.jarvis.assistant.brain.cloudSkipNote
+import com.jarvis.assistant.brain.Engine
+import com.jarvis.assistant.brain.Gguf
+import com.jarvis.assistant.brain.LlamaEngine
 import com.jarvis.assistant.brain.LlmRequest
+import com.jarvis.assistant.brain.LocalEngine
 import com.jarvis.assistant.brain.OfflineBrain
+import com.jarvis.assistant.brain.SwitchableBrain
 import com.jarvis.assistant.prompt.ChatPrompt
 import com.jarvis.assistant.prompt.ChatStyle
+import com.jarvis.assistant.prompt.GemmaChatTemplate
+import com.jarvis.assistant.prompt.ModelChatTemplate
 import com.jarvis.assistant.control.JarvisAccessibilityService
 import com.jarvis.assistant.voice.Voice
 import com.jarvis.assistant.voice.WakeWordService
@@ -28,6 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.Calendar
 import kotlin.math.ceil
 import kotlin.math.min
@@ -37,6 +46,7 @@ const val GREETING =
     "Hi, I'm Jarvis. Tap the microphone and talk, or type below - or just chat with me."
 const val READY_NOTE = "Running offline on this phone"
 const val NEEDS_MODEL_NOTE = "One-time setup: import a Gemma model file in Settings"
+const val NEEDS_GGUF_NOTE = "One-time setup: import a .gguf model file in Settings"
 
 /**
  * Holds every piece of state the UI needs. The composables are stateless and
@@ -47,15 +57,40 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     private val ctx = app.applicationContext
     private val prefs = Prefs(ctx)
     private val memory = Memory(ctx)
-    private val engine = LlmEngine(ctx)
+
+    // Both on-device engines are built and kept, so switching between them is a reload and
+    // nothing more. Only the chosen one is ever loaded into memory.
+    private val mediaPipeEngine = LlmEngine(ctx)
+    private val llamaEngine = LlamaEngine(ctx)
+
+    /** The engine the settings point at; the whole model section works through this. */
+    private val engine: Engine
+        get() = if (prefs.localEngine == LocalEngine.Llama) llamaEngine else mediaPipeEngine
+
     private val actions = Actions(ctx, memory, prefs) { JarvisAccessibilityService.instance }
     private val tools = Tools(actions, memory) { prefs.mode }
-    private val localBrain = OfflineBrain(engine) { mode ->
-        if (mode == Mode.Chat) Sampling.chat(prefs.chatTemperature) else Sampling.Command
-    }
+    // Starts on whichever engine the settings point at, so a cold start and a switch agree.
+    private val localBrain = SwitchableBrain(brainFor(engine))
     private val cloudBrain = CloudBrain { cloudConfig() }
     private val router = BrainRouter(localBrain, cloudBrain) { cloudWanted() }
     private val brain: Brain = router
+
+    /**
+     * The on-device brain for one engine: its own template, the mode's sampling, the reply
+     * length the user chose. Written once, so both engines answer the same way.
+     */
+    private fun brainFor(target: Engine): OfflineBrain = OfflineBrain(
+        target,
+        if (target === llamaEngine) {
+            ModelChatTemplate { instructions, turns, text -> llamaEngine.applyTemplate(instructions, turns, text) }
+        } else {
+            GemmaChatTemplate
+        },
+        sampling = { mode ->
+            if (mode == Mode.Chat) Sampling.chat(prefs.chatTemperature) else Sampling.Command
+        },
+        length = { prefs.replyLength },
+    )
     private val assistant = Assistant(
         brain,
         actions,
@@ -236,6 +271,23 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var modelBytes by mutableStateOf(0L)
         private set
+
+    /** Which on-device engine the settings are set to. */
+    var localEngineChoice by mutableStateOf(prefs.localEngine)
+        private set
+
+    /** True when this build really carries llama.cpp, so a .gguf can run at all. */
+    var engineAvailable by mutableStateOf(false)
+        private set
+
+    /** What the on-device model calls itself, for the engine card. */
+    var modelLabel by mutableStateOf("")
+        private set
+
+    /** How far a .gguf copy is, or -1 when nothing is being copied. */
+    var modelCopyPercent by mutableStateOf(-1)
+        private set
+
     var chatBytes by mutableStateOf(0L)
         private set
     var versionLine by mutableStateOf("")
@@ -269,7 +321,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         }
         refreshFacts()
         refreshRuntime()
-        if (modelPresent) loadModel() else modelNote = NEEDS_MODEL_NOTE
+        // loadModel() also words the "which file do you need" note, for whichever engine is set.
+        loadModel()
     }
 
     // ------------------------------------------------------------------ sections
@@ -648,7 +701,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     fun loadModel() {
         modelPresent = engine.isModelPresent()
         if (!modelPresent) {
-            modelNote = NEEDS_MODEL_NOTE
+            modelReady = false
+            modelNote = if (prefs.localEngine == LocalEngine.Llama) NEEDS_GGUF_NOTE else NEEDS_MODEL_NOTE
             return
         }
         modelNote = "Loading the AI model..."
@@ -673,13 +727,15 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Copies the `.task` bundle the MediaPipe engine runs. */
     fun importModel(uri: Uri) {
         modelReady = false
+        modelCopyPercent = -1
         modelNote = "Copying the model file (this happens once)..."
         viewModelScope.launch {
             val problem = withContext(Dispatchers.IO) {
                 try {
-                    engine.importModel(uri) { }
+                    mediaPipeEngine.importModel(uri) { }
                     null
                 } catch (e: Throwable) {
                     e.message ?: e.toString()
@@ -688,6 +744,72 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             if (problem == null) loadModel() else modelNote = "Copying the file failed: $problem"
         }
     }
+
+    /**
+     * Copies a chosen `.gguf`. Its header is checked first, so the wrong file is refused in a
+     * second instead of after a long copy, and the note carries the percentage while it runs.
+     */
+    fun importGguf(uri: Uri) {
+        modelReady = false
+        modelCopyPercent = 0
+        modelNote = "Copying the .gguf model (this happens once)..."
+        val total = pickedBytes(uri)
+        viewModelScope.launch {
+            val problem = withContext(Dispatchers.IO) {
+                try {
+                    var reported = -1
+                    llamaEngine.importModel(uri) { done ->
+                        if (total > 0) {
+                            val percent = (done * 100 / total).toInt().coerceIn(0, 100)
+                            if (percent != reported) {
+                                reported = percent
+                                viewModelScope.launch { modelCopyPercent = percent }
+                            }
+                        }
+                    }
+                    null
+                } catch (e: Throwable) {
+                    e.message ?: e.toString()
+                }
+            }
+            modelCopyPercent = -1
+            when {
+                problem != null -> modelNote = "Copying the file failed: $problem"
+                prefs.localEngine == LocalEngine.Llama -> loadModel()
+                else -> {
+                    modelNote = "Model saved. Switching to llama.cpp (.gguf)."
+                    chooseEngine(LocalEngine.Llama)
+                }
+            }
+        }
+    }
+
+    /**
+     * Switches the on-device engine. The engine being left behind lets go of its model, so only
+     * one is in memory at a time; both model files stay on the phone, so switching back is quick.
+     */
+    fun chooseEngine(next: LocalEngine) {
+        if (next == prefs.localEngine) return
+        prefs.localEngine = next
+        localEngineChoice = next
+        modelReady = false
+        contextEffective = 0
+        modelNote = null
+        val wanted = engine
+        (if (wanted === llamaEngine) mediaPipeEngine else llamaEngine).close()
+        localBrain.switchTo(brainFor(wanted))
+        refreshRuntime()
+        loadModel()
+    }
+
+    /** The size behind a `content://` uri, when the picker will say. */
+    private fun pickedBytes(uri: Uri): Long = runCatching {
+        ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use 0L
+            val index = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (index < 0 || cursor.isNull(index)) 0L else cursor.getLong(index)
+        } ?: 0L
+    }.getOrDefault(0L)
 
     // ------------------------------------------------------------------ runtime
 
@@ -702,10 +824,20 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         speechAvailable = voice.isSpeechRecognitionAvailable()
         ttsReady = voice.isTtsReady
         if (ttsReady) ttsVoiceMissing = !voice.languageAvailable(language)
+        engineAvailable = LlamaEngine.isAvailable
+        localEngineChoice = prefs.localEngine
+        modelLabel = if (prefs.localEngine == LocalEngine.Llama) ggufLabel() else "Gemma .task"
         modelPresent = engine.isModelPresent()
         modelBytes = engine.modelBytes()
         chatBytes = store.sizeBytes()
         versionLine = appVersion()
+    }
+
+    /** What the `.gguf` on disk calls itself, read from its own header. */
+    private fun ggufLabel(): String {
+        if (!llamaEngine.isModelPresent()) return "no .gguf model yet"
+        val file = File(ctx.filesDir, LlamaEngine.ModelName)
+        return (Gguf.inspect(file) as? Gguf.Check.Ok)?.info?.label ?: "gguf model"
     }
 
     fun actionBlockers(): Map<String, String?> = actionsForDevice().associate { it.id to blockerFor(it) }
@@ -736,7 +868,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         super.onCleared()
         voice.destroy()
-        engine.close()
+        mediaPipeEngine.close()
+        llamaEngine.close()
     }
 
     fun chooseReplyLength(length: ReplyLength) {
