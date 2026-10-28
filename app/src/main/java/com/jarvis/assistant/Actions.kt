@@ -111,22 +111,29 @@ class Actions(
         // message reads as a command. Otherwise hand it to the brain as conversation.
         val cmd = CommandParser.commandText(clean) ?: return null
 
-        // ---- the network: the one thing both modes may use ----
-        Regex("^(?:install|download)\\s+(?:the\\s+)?(?:app\\s+)?(.+)$").find(cmd)?.let {
-            return installApp(it.groupValues[1])
-        }
+        // ---- the network ----
+        // Chat mode can reach the web through Jarvis itself - the Assistant looks the
+        // question up and the model answers from what came back - but it never opens
+        // anything on the phone: no browser tab, no Play Store.
         searchQuery(cmd)?.let { query ->
+            // Nothing can be looked up with the internet off, so say so instead of letting
+            // the model make something up - a sentence, not a phone action.
+            if (!prefs.internetEnabled) return webSearch(query)
             // With background answers on, the Assistant looks the question up and answers
-            // from the results; opening a browser tab is the fallback.
-            if (prefs.webAnswers) return null
+            // from the results. Chat mode never opens a browser tab itself.
+            if (chatOnly || prefs.webAnswers) return null
             return webSearch(query)
-        }
-        Regex("^(?:open|go to)\\s+((?:https?://|www\\.)\\S+)$").find(cmd)?.let {
-            return openUrl(it.groupValues[1])
         }
 
         // Chat mode stops here. Everything below can change something on the phone.
         if (chatOnly) return null
+
+        Regex("^(?:install|download)\\s+(?:the\\s+)?(?:app\\s+)?(.+)$").find(cmd)?.let {
+            return installApp(it.groupValues[1])
+        }
+        Regex("^(?:open|go to)\\s+((?:https?://|www\\.)\\S+)$").find(cmd)?.let {
+            return openUrl(it.groupValues[1])
+        }
 
         // ---- screen navigation ----
         screenCommand(cmd)?.let { return it }

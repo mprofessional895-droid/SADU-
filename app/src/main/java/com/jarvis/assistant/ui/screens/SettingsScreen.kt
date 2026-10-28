@@ -39,7 +39,9 @@ import com.jarvis.assistant.AssistantText
 import com.jarvis.assistant.JarvisViewModel
 import com.jarvis.assistant.Mode
 import com.jarvis.assistant.ReplyLength
+import com.jarvis.assistant.Sampling
 import com.jarvis.assistant.brain.CloudProvider
+import com.jarvis.assistant.prompt.ChatStyle
 import com.jarvis.assistant.READY_NOTE
 import com.jarvis.assistant.ui.Dimens
 import com.jarvis.assistant.ui.Ink
@@ -101,6 +103,9 @@ data class SettingsUiState(
     val contextTokens: Int = 4096,
     val contextEffective: Int = 0,
     val replyLength: ReplyLength = ReplyLength.Default,
+    val chatStyle: ChatStyle = ChatStyle.Default,
+    val chatTemperature: Float = Sampling.DefaultTemperature,
+    val chatInstructions: String = "",
     val cloudEnabled: Boolean = false,
     val cloudProvider: CloudProvider = CloudProvider.Compatible,
     val cloudBaseUrl: String = "",
@@ -145,6 +150,9 @@ fun SettingsScreen(vm: JarvisViewModel) {
             contextTokens = vm.contextTokens,
             contextEffective = vm.contextEffective,
             replyLength = vm.replyLength,
+            chatStyle = vm.chatStyle,
+            chatTemperature = vm.chatTemperature,
+            chatInstructions = vm.chatInstructions,
             cloudEnabled = vm.cloudEnabled,
             cloudProvider = vm.cloudProvider,
             cloudBaseUrl = vm.cloudBaseUrl,
@@ -170,6 +178,9 @@ fun SettingsScreen(vm: JarvisViewModel) {
         },
         onContextTokens = { vm.chooseContextTokens(it) },
         onReplyLength = { vm.chooseReplyLength(it) },
+        onChatStyle = { vm.chooseChatStyle(it) },
+        onChatTemperature = { vm.chooseChatTemperature(it) },
+        onChatInstructions = { vm.editChatInstructions(it) },
         onCloudEnabled = { vm.chooseCloudEnabled(it) },
         onCloudProvider = { vm.chooseCloudProvider(it) },
         onCloudBaseUrl = { vm.editCloudBaseUrl(it) },
@@ -196,6 +207,9 @@ fun SettingsContent(
     onDeleteEverything: () -> Unit,
     onContextTokens: (Int) -> Unit = {},
     onReplyLength: (ReplyLength) -> Unit = {},
+    onChatStyle: (ChatStyle) -> Unit = {},
+    onChatTemperature: (Float) -> Unit = {},
+    onChatInstructions: (String) -> Unit = {},
     onCloudEnabled: (Boolean) -> Unit = {},
     onCloudProvider: (CloudProvider) -> Unit = {},
     onCloudBaseUrl: (String) -> Unit = {},
@@ -280,6 +294,21 @@ fun SettingsContent(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+            }
+        }
+
+        // ------------------------------------------------------------- chat brain
+        item(key = "chat") {
+            Column {
+                SectionLabel("Chat mode", modifier = Modifier.padding(bottom = 8.dp))
+                ChatBrainCard(
+                    style = state.chatStyle,
+                    temperature = state.chatTemperature,
+                    instructions = state.chatInstructions,
+                    onStyle = onChatStyle,
+                    onTemperature = onChatTemperature,
+                    onInstructions = onChatInstructions,
+                )
             }
         }
 

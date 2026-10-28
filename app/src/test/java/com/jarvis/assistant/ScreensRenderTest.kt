@@ -22,7 +22,9 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.jarvis.assistant.ui.Ink
 import com.jarvis.assistant.ui.JarvisNavBar
 import com.jarvis.assistant.ui.JarvisTheme
+import com.jarvis.assistant.prompt.ChatStyle
 import com.jarvis.assistant.ui.screens.Chat
+import com.jarvis.assistant.ui.screens.ChatBrainCard
 import com.jarvis.assistant.ui.screens.ContextWindowCard
 import com.jarvis.assistant.ui.screens.ConversationList
 import com.jarvis.assistant.ui.screens.HomeContent
@@ -383,6 +385,24 @@ class ScreensRenderTest {
     fun settings() {
         show { settingsContent() }
         shoot("settings-360x640")
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
+    fun chatBrainCard() {
+        show {
+            Column(Modifier.fillMaxSize().padding(12.dp)) {
+                ChatBrainCard(
+                    style = ChatStyle.Friendly,
+                    temperature = 0.9f,
+                    instructions = "answer in Hinglish, keep it casual",
+                    onStyle = {},
+                    onTemperature = {},
+                    onInstructions = {},
+                )
+            }
+        }
+        shoot("settings-chat-brain-360x640")
     }
 
     @Test

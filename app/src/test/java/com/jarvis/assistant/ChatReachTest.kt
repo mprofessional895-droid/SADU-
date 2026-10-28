@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,6 +31,17 @@ class ChatReachTest {
     }
 
     private fun ruled(text: String) = actions.tryHandleChatMode(text)
+
+    /** The internet toggle is off by default in this app, and the network rule keys on it. */
+    private fun online(body: () -> Unit) {
+        val was = prefs.internetEnabled
+        prefs.internetEnabled = true
+        try {
+            body()
+        } finally {
+            prefs.internetEnabled = was
+        }
+    }
 
     private fun withWebAnswers(on: Boolean, body: () -> Unit) {
         prefs.webAnswers = on
@@ -72,10 +84,29 @@ class ChatReachTest {
 
     @Test
     fun onlyAnExplicitWebRequestCountsAsASearch() {
-        assertNull("with web answers on, the Assistant looks this up", ruled("search for cat videos"))
-        assertNull("mentioning a search is not a search", ruled("I search for meaning sometimes"))
-        withWebAnswers(false) {
-            assertNotNull("with web answers off, the browser is opened as before", ruled("search for cat videos"))
+        online {
+            assertNull("with web answers on, the Assistant looks this up", ruled("search for cat videos"))
+            assertNull("mentioning a search is not a search", ruled("I search for meaning sometimes"))
+        }
+    }
+
+    @Test
+    fun withNothingToLookItUpWithChatModeSaysSoAndOpensNothing() {
+        prefs.internetEnabled = false
+        val answer = ruled("search for cat videos")
+        assertNotNull("an honest sentence instead of a made-up answer", answer)
+        assertTrue(answer!!.contains("Internet is off"))
+    }
+
+    @Test
+    fun chatModeNeverOpensAnythingItself() {
+        online {
+            assertNull("no browser tab from Chat mode", ruled("search for cat videos"))
+            withWebAnswers(false) {
+                assertNull("not even with background answers off", ruled("search for cat videos"))
+            }
+            assertNull("no Play Store from Chat mode", ruled("install whatsapp"))
+            assertNull("no link opened from Chat mode", ruled("open google.com"))
         }
     }
 

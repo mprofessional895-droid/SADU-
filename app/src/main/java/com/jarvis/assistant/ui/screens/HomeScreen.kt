@@ -56,6 +56,7 @@ import com.jarvis.assistant.ui.components.ModeSwitch
 import com.jarvis.assistant.ui.components.RoundIconButton
 import com.jarvis.assistant.ui.components.SectionLabel
 import com.jarvis.assistant.ui.components.StatusPill
+import com.jarvis.assistant.ui.MarkdownText
 import com.jarvis.assistant.ui.components.SurfaceCard
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 
@@ -332,10 +333,11 @@ private fun LastTurnCard(turn: List<ChatMsg>) {
             Spacer(Modifier.height(6.dp))
         }
         if (answer != null) {
-            Text(
+            MarkdownText(
                 text = answer.text,
                 color = Ink.Text,
-                style = MaterialTheme.typography.bodyMedium,
+                accent = Ink.Accent,
+                size = 14,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )

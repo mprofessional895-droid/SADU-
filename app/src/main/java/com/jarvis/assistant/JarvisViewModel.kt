@@ -19,6 +19,8 @@ import com.jarvis.assistant.brain.CloudProvider
 import com.jarvis.assistant.brain.cloudSkipNote
 import com.jarvis.assistant.brain.LlmRequest
 import com.jarvis.assistant.brain.OfflineBrain
+import com.jarvis.assistant.prompt.ChatPrompt
+import com.jarvis.assistant.prompt.ChatStyle
 import com.jarvis.assistant.control.JarvisAccessibilityService
 import com.jarvis.assistant.voice.Voice
 import com.jarvis.assistant.voice.WakeWordService
@@ -48,7 +50,9 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     private val engine = LlmEngine(ctx)
     private val actions = Actions(ctx, memory, prefs) { JarvisAccessibilityService.instance }
     private val tools = Tools(actions, memory) { prefs.mode }
-    private val localBrain = OfflineBrain(engine)
+    private val localBrain = OfflineBrain(engine) { mode ->
+        if (mode == Mode.Chat) Sampling.chat(prefs.chatTemperature) else Sampling.Command
+    }
     private val cloudBrain = CloudBrain { cloudConfig() }
     private val router = BrainRouter(localBrain, cloudBrain) { cloudWanted() }
     private val brain: Brain = router
@@ -61,6 +65,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         { prefs.mode },
         { prefs.contextTokens },
         { prefs.replyLength },
+        { prefs.chatStyle },
+        { prefs.chatInstructions },
         { prefs.internetEnabled && prefs.webAnswers },
     )
     private val store = ChatHistory(ctx)
@@ -165,6 +171,25 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
     /** How long Jarvis should make its answers. */
     var replyLength by mutableStateOf(prefs.replyLength)
         private set
+
+    /** How Chat mode's answers should read. */
+    var chatStyle by mutableStateOf(prefs.chatStyle)
+        private set
+
+    /** How lively the on-device Chat answers should be. */
+    var chatTemperature by mutableStateOf(prefs.chatTemperature)
+        private set
+
+    /** The user's own extra instructions for Chat mode. */
+    var chatInstructions by mutableStateOf(prefs.chatInstructions)
+        private set
+
+    /** True while an answer is being written and can still be stopped. */
+    var canStop by mutableStateOf(false)
+        private set
+
+    @Volatile
+    private var stoppedByUser = false
 
     var cloudEnabled by mutableStateOf(prefs.cloudEnabled)
         private set
@@ -386,6 +411,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         persist()
         micLevel = 0f
         aiState = AiState.Processing
+        stoppedByUser = false
+        canStop = true
 
         val buffer = StreamBuffer()
         val state = StreamState()
@@ -399,6 +426,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             state.markFinished()
+            canStop = false
             // A rule answer, a tool result, or the whole on-device reply: reveal it smoothly.
             if (buffer.length == 0) buffer.append(reply)
             ticker.join()
@@ -409,7 +437,9 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
             val usedCloud = assistant.answeredWithModel && router.lastUsed != localBrain.name
             val fallback = router.lastFallback
             errorText = listOfNotNull(
-                if (assistant.lastReplyTruncated) {
+                if (stoppedByUser) "Stopped at your request." else null,
+                if (assistant.lastActionClaim) ChatPolicy.CLAIM_NOTE else null,
+                if (!stoppedByUser && assistant.lastReplyTruncated) {
                     "This answer stopped at the length limit. Choose Long under Reply length, " +
                         "or ask for the rest."
                 } else {
@@ -713,6 +743,31 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app) {
         if (length == replyLength) return
         replyLength = length
         prefs.replyLength = length
+    }
+
+    fun chooseChatStyle(style: ChatStyle) {
+        if (style == chatStyle) return
+        chatStyle = style
+        prefs.chatStyle = style
+    }
+
+    fun chooseChatTemperature(value: Float) {
+        val next = Sampling.clampTemperature(value)
+        if (next == chatTemperature) return
+        chatTemperature = next
+        // The sampler is read when the next answer starts, so nothing reloads here.
+        prefs.chatTemperature = next
+    }
+
+    fun editChatInstructions(text: String) {
+        chatInstructions = text.take(ChatPrompt.MAX_EXTRA)
+        prefs.chatInstructions = chatInstructions
+    }
+
+    /** Stops the on-device model mid-answer, when the user asks for that. */
+    fun stopGenerating() {
+        if (aiState != AiState.Processing) return
+        stoppedByUser = engine.cancel()
     }
 
     fun chooseContextTokens(tokens: Int) {

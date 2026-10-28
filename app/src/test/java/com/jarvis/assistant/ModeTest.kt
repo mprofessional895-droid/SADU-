@@ -65,7 +65,8 @@ class ModeTest {
         assertFalse("Chat mode must not mention JSON", prompt.contains("JSON"))
         assertFalse("Chat mode must not mention tools", prompt.contains("tool"))
         assertFalse("Chat mode must not mention {\"", prompt.contains("{\""))
-        assertTrue("The model must know it cannot act", prompt.contains("Control mode"))
+        assertFalse("no mode talk in the chat prompt", prompt.contains("Control mode"))
+        assertFalse("no phone talk in the chat prompt", prompt.contains("touch the phone"))
         assertTrue(prompt.contains("The user's name is Ada"))
         assertTrue(prompt.contains("Hindi"))
         assertTrue(prompt.contains("how are you"))
@@ -97,13 +98,18 @@ class ModeTest {
     }
 
     @Test
-    fun bothPromptsAskForCleanText() {
-        val chat = Prompt.chat("", "", emptyList(), "hi")
+    fun controlPromptStillAsksForCleanText() {
         val control = Prompt.control("", "- menu", "", emptyList(), "hi")
-        for (prompt in listOf(chat, control)) {
-            assertTrue(prompt.contains("real line breaks"))
-            assertTrue(prompt.contains("escape codes"))
-        }
+        assertTrue(control.contains("real line breaks"))
+        assertTrue(control.contains("escape codes"))
+    }
+
+    @Test
+    fun chatPromptNoLongerBansFormatting() {
+        val chat = Prompt.chat("", "", emptyList(), "hi")
+        assertFalse("Chat may use markdown now", chat.contains("escape codes"))
+        assertFalse("no heading ban", chat.contains("no # headings"))
+        assertTrue("and is told that lists are welcome", chat.contains("dashes"))
     }
 
     @Test
