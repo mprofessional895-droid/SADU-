@@ -100,3 +100,31 @@ published per version (`v0.5`, ...) with the APK attached, so the phone can inst
 `.github/workflows/build.yml` builds a debug APK and publishes a GitHub Release
 (`build-<run_number>`) on push to `main`. Pushing workflow-file changes needs a token with
 the `workflow` scope.
+
+## The on-device engine, and where its ceiling is
+
+`LlmEngine` wraps MediaPipe `LlmInference` (tasks-genai 0.10.27). Its API surface was read
+straight out of the AAR (`javap` on `classes.jar`) and is small:
+
+- **Session sampling** (`LlmInferenceSessionOptions.Builder`): `topK`, `topP`, `temperature`,
+  `randomSeed`, plus optional LoRA, graph options, a constraint handle and `promptTemplates`.
+  There is **no repetition penalty, no frequency/presence penalty and no min-p** - nothing that
+  damps the loops a 1B model falls into. PocketPal runs llama.cpp, which has all of them, so the
+  same Gemma weights do not behave the same in the two apps.
+- **Engine options** (`LlmInferenceOptions.Builder`): `maxTokens` (the whole sequence - prompt
+  plus reply - and the KV cache), `maxTopK`, `maxNumImages`, `setPreferredBackend(CPU/GPU/DEFAULT)`.
+  The engine's `maxTopK` defaults to 40, so a session that asks for `setTopK(64)` is capped in
+  practice. `LlmEngine` pins the CPU backend and never sets `maxTopK`.
+
+What this means for Chat quality: the sampler is Google's Gemma card setting (top-k 64, top-p
+0.95, temperature 1.0) with no repetition control, on a 4-bit `.task` on the CPU, behind a prompt
+that spends roughly 300 tokens on instructions (persona + Chat-mode rules + reply length) before
+the first user turn. A reply can also simply run out of the `maxTokens` window rather than
+finish.
+`Prompt.local` builds the Gemma chat template by hand; MediaPipe 0.10.27 does expose
+`PromptTemplates`, which was not used.
+
+`Prefs.replyLength` (Short 512 / Normal 1200 / Long 3000) is applied twice: as `max_tokens` for a
+cloud model, and as a sentence in the prompt for this local one, which has no output cap of its
+own. Regression test worth keeping: `PromptTest.aLongPromptNeverEatsTheUsersWords` - the
+instructions and the user's message share one character cap, and the instructions must give way.
