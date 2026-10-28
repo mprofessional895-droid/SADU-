@@ -1,6 +1,10 @@
-# Jarvis (Android assistant)
+# Sadu (Android assistant)
 
-Personal, sideloaded Android voice assistant. Package `com.jarvis.assistant`.
+> The app was called Jarvis up to v0.12; the rename to **Sadu** (package `com.sadu.assistant`,
+> repo name, prefs file `sadu_prefs`) landed in v0.13. Old installs keep working but start with
+> fresh settings, because the preference file name changed with the package.
+
+Personal, sideloaded Android voice assistant. Package `com.sadu.assistant`.
 Offline AI (on-device Gemma via MediaPipe LLM Inference) + phone control + accessibility + speech.
 
 ## Build
@@ -17,11 +21,11 @@ gradle assembleDebug --no-daemon --console=plain
 The in-app model is a Gemma 3 1B `.task` file the user imports once into app storage
 (`filesDir/model.task`); it is not in the repo. `LlmEngine.isModelPresent()` requires >50 MB.
 
-## Module map (`app/src/main/java/com/jarvis/assistant/`)
+## Module map (`app/src/main/java/com/sadu/assistant/`)
 
 - `MainActivity.kt` - entry point; edge-to-edge; requests the permissions the catalog asks for;
   hosts the Compose shell.
-- `JarvisViewModel.kt` - all UI state: five sections, the assistant state machine (idle/ listening/
+- `SaduViewModel.kt` - all UI state: five sections, the assistant state machine (idle/ listening/
   processing/ speaking/ error), conversations, toggles, model load/import, voice wiring.
 - `AiState.kt` - `AiState` (assistant states) and `Tab` (the five sections).
 - `AssistantText.kt` / `ReplyClassifier.kt` - pure wording helpers and the answer/notice/failure
@@ -30,8 +34,8 @@ The in-app model is a Gemma 3 1B `.task` file the user imports once into app sto
   example; drives the Phone Actions screen and the permission request list. Android-free.
 - `ChatHistory.kt` - saves every conversation to `filesDir/chats.json` for the chat list.
 - `ReplyText.kt` - cleans raw model output (literal `\n`, prompt tokens, code fences).
-- `ui/` - Compose shell and screens: `JarvisApp.kt` (column: content + navigation bar, cross-fade
-  between sections), `JarvisNavBar.kt` (five items), `Theme.kt` (monochrome `Ink` palette, type,
+- `ui/` - Compose shell and screens: `SaduApp.kt` (column: content + navigation bar, cross-fade
+  between sections), `SaduNavBar.kt` (five items), `Theme.kt` (monochrome `Ink` palette, type,
   `rememberReducedMotion()`), `MarkdownText.kt` (bold/headings/bullets in plain text).
 - `ui/components/` - `Common.kt` (SurfaceCard, buttons, fields, empty states, `FadeIn`) and
   `Orb.kt` (the concentric-ring orb with a real microphone level).
@@ -56,8 +60,8 @@ The in-app model is a Gemma 3 1B `.task` file the user imports once into app sto
 - `Tools.kt` - tool specs + dispatch; the AI's list of abilities.
 - `Actions.kt` - what actually touches the phone (rules, intents, SMS, calls, torch, screen control).
 - `brain/` - `Brain` interface + `OfflineBrain` (the seam for a future cloud/hybrid brain).
-- `control/JarvisAccessibilityService.kt` - tap/type/scroll/back/home/recents/read screen.
-- `voice/` - `Voice.kt` (TTS + STT), `WakeWordService.kt` (experimental "Hey Jarvis", off by default).
+- `control/SaduAccessibilityService.kt` - tap/type/scroll/back/home/recents/read screen.
+- `voice/` - `Voice.kt` (TTS + STT), `WakeWordService.kt` (experimental "Hey Sadu", off by default).
 - `Prefs.kt` / `Memory.kt` - SharedPreferences: settings, and short user facts.
 
 ## Conventions
@@ -68,7 +72,7 @@ The in-app model is a Gemma 3 1B `.task` file the user imports once into app sto
 - Keep `Brain` as the swap point for cloud/hybrid; do not shortcut it.
 - All model output goes through `ReplyText.clean()` before it is stored or shown. Small models
   copy the JSON escaping from the tool-call examples and emit literal `\n`, so never trust raw text.
-- `JarvisViewModel.sessions` is the single source of truth for conversations; `messages` is derived.
+- `SaduViewModel.sessions` is the single source of truth for conversations; `messages` is derived.
 - Design language: background `#050505`, cards `#101010`, borders `#292929`, text `#F5F5F2`,
   secondary `#858585`, accent white. No colour, no glow, no gradients beyond the orb's own shading.
   Keep whitespace, hairline borders and 48dp-plus touch targets.
@@ -140,7 +144,7 @@ knob that damps a loop, so Chat mode samples at `Prefs.chatTemperature` (0.5-1.0
 tokens of instructions to a couple of hundred characters. There is still no repetition penalty,
 and a reply can still run out of the `maxTokens` window rather than finish. Replies stream through
 `LlmEngine.generateStream` (MediaPipe's `generateResponseAsync` progress callback hands over the
-text so far, so the delta is worked out here) and `JarvisViewModel.stopGenerating` stops one.
+text so far, so the delta is worked out here) and `SaduViewModel.stopGenerating` stops one.
 `Prompt.local` builds the Gemma chat template by hand; MediaPipe 0.10.27 does expose
 `PromptTemplates`, which was not used.
 
@@ -156,7 +160,7 @@ Chat mode has a Settings card of its own (`ui/screens/SettingsChat.kt`, section 
 `Prefs.chatTemperature` and `Prefs.chatInstructions`. None of it reaches Control mode, which keeps
 its own sampler and instructions, so an experiment with the answer style cannot make a tool call
 misfire. While a local reply is being written the composer offers Stop
-(`JarvisViewModel.canStop`), which reaches `LlmEngine.cancel`.
+(`SaduViewModel.canStop`), which reaches `LlmEngine.cancel`.
 
 Regression tests worth keeping for this split: `PromptTest.chatInstructionsStaySmall` (the Chat
 prompt must stay under ~700 characters), `ChatPolicyTest` (what counts as a phone request, and
@@ -169,7 +173,7 @@ Control still asks), `OfflineBrainStreamTest` (deltas, the template, the per-mod
 `brain/Engine.kt` is the seam. One interface, two implementations - `LlmEngine` (MediaPipe,
 unchanged in behaviour) and `brain/LlamaEngine.kt` (llama.cpp) - and `brain/OfflineBrain.kt` wraps
 either one, so nothing above it knows which answered. `brain/SwitchableBrain.kt` is the holder
-`JarvisViewModel` swaps when the user changes engine; `Prefs.localEngine` (key `mediapipe` /
+`SaduViewModel` swaps when the user changes engine; `Prefs.localEngine` (key `mediapipe` /
 `llama`) remembers the choice, and both model files stay on the phone, so switching back is a
 reload and nothing more. Only the chosen engine is ever loaded into memory.
 
@@ -182,7 +186,7 @@ they are in the first 64 KB) - a `.task` in the `.gguf` slot is refused in a sec
 700 MB copy.
 
 Native build: `app/src/main/cpp/CMakeLists.txt` fetches llama.cpp v0.7.0 through CMake
-FetchContent (pinned by `URL_HASH` sha256) and builds `libjarvis_llama.so` plus llama's own
+FetchContent (pinned by `URL_HASH` sha256) and builds `libsadu_llama.so` plus llama's own
 libraries; `app/src/main/cpp/llama_jni.cpp` is the JNI surface. It is wired into Gradle behind a
 `hasNdk` check, so a machine without the NDK still builds and ships MediaPipe-only, and
 `LlamaEngine.isAvailable` is then false with Settings saying so. On a phone, the `.gguf` engine
@@ -197,3 +201,30 @@ Not verified: no `.gguf` has ever been loaded or run - there is no device and no
 project, and the library is arm64 only. What is proved by tests is everything up to inference:
 header validation (`GgufTest`), the engine's refusals and bookkeeping (`LlamaEngineTest`), the
 template fallback (`ModelChatTemplateTest`) and the engine-agnostic brain (`OfflineBrainStreamTest`).
+
+## Looking things up (v0.13)
+
+`WebSearch.lookup` tries, in order: DuckDuckGo Lite HTML, **Bing's RSS feed**
+(`https://www.bing.com/search?q=...&format=rss`), the DuckDuckGo instant-answer API, and the
+Wikipedia API. DuckDuckGo Lite answers a datacentre with an HTTP 202 robot-check page that has
+no results in it, which is why searches used to come back empty and the app fell back to opening
+a browser tab. Two things fixed that:
+
+- a normal Android browser user agent (`WebSearch.UserAgent`) instead of one announcing the app;
+- Bing RSS as a second source, which parses cleanly even when DuckDuckGo blocks.
+
+`WebSearch.looksBlocked` recognises a challenge page, and `WebSearch.Lookup.blocked` lets the
+Assistant say "the search engine answered with a robot check" instead of inventing an answer.
+`Assistant.webAnswer` now always returns a sentence - it never hands the question to a browser.
+
+Chat mode has no tool menu (it must stay a conversation), so it asks for a look-up with one
+line, `SEARCH: <query>`, which `Assistant.searchRequest` picks up and answers from the results.
+
+## The two screens (v0.13)
+
+- `ui/components/Constellation.kt` - "The Emergent Mind": a real 3D point cloud projected with a
+  perspective divide on every frame, neighbour edges found once, touch to orbit, tap for a wave.
+  Not an image and not a frame loop. Reduced motion draws one static frame.
+- `ui/components/ThoughtField.kt` - "Thought Stream": the faint particle field behind a chat,
+  which gathers toward a drifting point while thinking and streams upward while answering.
+- The assistant's turn in a conversation has no bubble: full-width text with a hairline rule.

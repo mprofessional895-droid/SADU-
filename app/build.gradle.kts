@@ -11,7 +11,7 @@ val ndkRoot = file(
 val hasNdk = ndkRoot.isDirectory && !(ndkRoot.list()?.isEmpty() ?: true)
 
 android {
-    namespace = "com.jarvis.assistant"
+    namespace = "com.sadu.assistant"
     compileSdk = 34
 
     if (hasNdk) {
@@ -19,11 +19,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.jarvis.assistant"
+        applicationId = "com.sadu.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.12"
+        versionCode = 14
+        versionName = "0.13"
         ndk { abiFilters += listOf("arm64-v8a") }
 
         if (hasNdk) {
