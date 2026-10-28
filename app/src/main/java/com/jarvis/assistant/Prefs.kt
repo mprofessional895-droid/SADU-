@@ -2,7 +2,10 @@ package com.jarvis.assistant
 
 import android.content.Context
 import com.jarvis.assistant.brain.CloudProvider
+import com.jarvis.assistant.brain.LocalEngine
 import com.jarvis.assistant.brain.cloudProviderFrom
+import com.jarvis.assistant.prompt.ChatPrompt
+import com.jarvis.assistant.prompt.ChatStyle
 
 /** Small, persistent user settings. */
 class Prefs(ctx: Context) {
@@ -54,6 +57,14 @@ class Prefs(ctx: Context) {
         get() = ContextBudget.clamp(p.getInt("context", ContextBudget.Default))
         set(v) = p.edit().putInt("context", ContextBudget.clamp(v)).apply()
 
+    /**
+     * Which on-device engine runs the model: MediaPipe's `.task` bundle or llama.cpp's `.gguf`
+     * file. Both are kept, so switching back is instant. Anything unreadable means MediaPipe.
+     */
+    var localEngine: LocalEngine
+        get() = LocalEngine.of(p.getString("local_engine", null))
+        set(v) = p.edit().putString("local_engine", v.key).apply()
+
     /** Whether Jarvis may look something up and answer from it, instead of opening a browser. */
     var webAnswers: Boolean
         get() = p.getBoolean("web_answers", true)
@@ -84,9 +95,23 @@ class Prefs(ctx: Context) {
 
     val cloudKeyProtected: Boolean get() = SecretBox.isProtected(p, "cloud_key")
 
-    /** How long a cloud reply may be. */
     /** How long Jarvis should make its answers. */
     var replyLength: ReplyLength
         get() = ReplyLength.of(p.getString("reply_length", null))
         set(v) = p.edit().putString("reply_length", v.key).apply()
+
+    /** How Chat mode's answers should read: no personality imposed, or a friendly one. */
+    var chatStyle: ChatStyle
+        get() = ChatStyle.of(p.getString("chat_style", null))
+        set(v) = p.edit().putString("chat_style", v.key).apply()
+
+    /** How lively the on-device Chat answers should be. */
+    var chatTemperature: Float
+        get() = Sampling.clampTemperature(p.getFloat("chat_temp", Sampling.DefaultTemperature))
+        set(v) = p.edit().putFloat("chat_temp", Sampling.clampTemperature(v)).apply()
+
+    /** Extra instructions the user wrote for Chat mode, or "". */
+    var chatInstructions: String
+        get() = p.getString("chat_instructions", "").orEmpty()
+        set(v) = p.edit().putString("chat_instructions", v.trim().take(ChatPrompt.MAX_EXTRA)).apply()
 }

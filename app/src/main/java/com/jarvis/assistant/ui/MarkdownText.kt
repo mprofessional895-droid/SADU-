@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -27,6 +28,8 @@ fun MarkdownText(
     accent: Color,
     modifier: Modifier = Modifier,
     size: Int = 16,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
 ) {
     val annotated = remember(text, accent) { markdown(text, accent) }
     Text(
@@ -35,6 +38,8 @@ fun MarkdownText(
         fontSize = size.sp,
         lineHeight = (size + 7).sp,
         modifier = modifier,
+        maxLines = maxLines,
+        overflow = overflow,
     )
 }
 

@@ -89,13 +89,20 @@ class ModePersistenceTest {
     fun chatModeRulesStillAnswerTheClockAndTheNetwork() {
         val prefs = Prefs(ctx)
         prefs.webAnswers = false
+        prefs.internetEnabled = false
         val actions = Actions(ctx, Memory(ctx), prefs) { null }
         assertTrue(actions.tryHandleChatMode("what time is it")!!.contains("It's"))
-        // The internet toggle is off by default, so the network rule answers honestly.
+        // Nothing can be looked up with the internet off, so Chat mode says so - and still
+        // opens nothing on the phone.
         assertTrue(actions.tryHandleChatMode("search the web for cats")!!.contains("Internet is off"))
         // With background answers on, the Assistant does the lookup instead.
+        prefs.internetEnabled = true
         prefs.webAnswers = true
         assertNull(actions.tryHandleChatMode("search the web for cats"))
+        // And with background answers off, Chat mode opens no browser of its own either.
+        prefs.webAnswers = false
+        assertNull(actions.tryHandleChatMode("search the web for cats"))
+        prefs.internetEnabled = false
     }
 
     @Test

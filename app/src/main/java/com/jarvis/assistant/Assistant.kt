@@ -2,6 +2,7 @@ package com.jarvis.assistant
 
 import com.jarvis.assistant.brain.Brain
 import com.jarvis.assistant.brain.LlmRequest
+import com.jarvis.assistant.prompt.ChatStyle
 import org.json.JSONObject
 import java.util.Locale
 
@@ -27,6 +28,10 @@ class Assistant(
     private val contextTokens: () -> Int = { ContextBudget.Default },
     /** How long answers should be, from Settings. */
     private val replyLength: () -> ReplyLength = { ReplyLength.Default },
+    /** How Chat mode's answers should read, from Settings. */
+    private val chatStyle: () -> ChatStyle = { ChatStyle.Default },
+    /** The user's own extra instructions for Chat mode, from Settings. */
+    private val extraInstructions: () -> String = { "" },
     /** Whether a "search for ..." may be looked up here and answered from the results. */
     private val webAnswers: () -> Boolean = { false },
     /** How a page is fetched. Swapped in tests so no connection is needed. */
@@ -70,9 +75,14 @@ class Assistant(
     var lastReplyTruncated = false
         private set
 
+    /** True when a Chat-mode reply claimed a phone action it cannot have done. */
+    var lastActionClaim = false
+        private set
+
     fun respond(text: String, onDelta: (String) -> Unit = {}): String {
         answeredWithModel = false
         lastReplyTruncated = false
+        lastActionClaim = false
         val current = mode()
 
         // "search about X": look it up in the background and answer from what came back.
@@ -80,6 +90,14 @@ class Assistant(
             actions.searchQuery(text)?.let { query ->
                 webAnswer(text, query, current, onDelta)?.let { return it }
             }
+        }
+
+        // Chat mode cannot act on the phone, so it says so itself rather than letting the
+        // model promise something that will never happen.
+        if (current == Mode.Chat && ChatPolicy.phoneIntent(text)) {
+            val line = ChatPolicy.NOT_HERE
+            remember(text, line)
+            return line
         }
 
         try {
@@ -114,6 +132,7 @@ class Assistant(
 
         gate?.finish()
         val reply = cleanChat(raw)
+        lastActionClaim = current == Mode.Chat && ChatPolicy.claimsPhoneAction(reply)
         answeredWithModel = true
         lastReplyTruncated = brain.lastReplyTruncated
         remember(text, reply)
@@ -142,7 +161,7 @@ class Assistant(
         if (brain.isReady) {
             val enriched = WebSearch.digest(query, hits) + "\n\nMy question: " + text
             val raw = try {
-                brain.generateStream(requestFor(enriched, current), onDelta)
+                brain.generateStream(requestFor(enriched, current, webResults = true), onDelta)
             } catch (e: Throwable) {
                 null
             }
@@ -160,10 +179,18 @@ class Assistant(
         return spoken
     }
 
-    private fun requestFor(text: String, current: Mode): LlmRequest {
+    private fun requestFor(text: String, current: Mode, webResults: Boolean = false): LlmRequest {
         val menu = if (current == Mode.Control) tools.menu() else ""
-        val instructions =
-            Prompt.system(current, memory.asContext(), languageName(), menu, replyLength())
+        val instructions = Prompt.system(
+            mode = current,
+            facts = memory.asContext(),
+            languageName = languageName(),
+            menu = menu,
+            length = replyLength(),
+            style = chatStyle(),
+            extra = extraInstructions(),
+            webResults = webResults,
+        )
         val fixed = ContextBudget.estimate(instructions) + ContextBudget.estimate(text)
         val window = ContextBudget.clamp(contextTokens())
         return LlmRequest(

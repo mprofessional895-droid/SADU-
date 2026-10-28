@@ -22,8 +22,12 @@ import com.github.takahirom.roborazzi.captureRoboImage
 import com.jarvis.assistant.ui.Ink
 import com.jarvis.assistant.ui.JarvisNavBar
 import com.jarvis.assistant.ui.JarvisTheme
+import com.jarvis.assistant.prompt.ChatStyle
+import com.jarvis.assistant.brain.LocalEngine
 import com.jarvis.assistant.ui.screens.Chat
+import com.jarvis.assistant.ui.screens.ChatBrainCard
 import com.jarvis.assistant.ui.screens.ContextWindowCard
+import com.jarvis.assistant.ui.screens.EngineCard
 import com.jarvis.assistant.ui.screens.ConversationList
 import com.jarvis.assistant.ui.screens.HomeContent
 import com.jarvis.assistant.ui.screens.MemoryContent
@@ -387,6 +391,72 @@ class ScreensRenderTest {
 
     @Test
     @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
+    fun chatBrainCard() {
+        show {
+            Column(Modifier.fillMaxSize().padding(12.dp)) {
+                ChatBrainCard(
+                    style = ChatStyle.Friendly,
+                    temperature = 0.9f,
+                    instructions = "answer in Hinglish, keep it casual",
+                    onStyle = {},
+                    onTemperature = {},
+                    onInstructions = {},
+                )
+            }
+        }
+        shoot("settings-chat-brain-360x640")
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
+    fun engineCardOnLlama() {
+        show {
+            Column(Modifier.fillMaxSize().padding(12.dp)) {
+                EngineCard(
+                    choice = LocalEngine.Llama,
+                    available = true,
+                    ready = true,
+                    present = true,
+                    bytes = 806_000_000L,
+                    label = "gemma-3-1b-it-Q4_K_M",
+                    note = null,
+                    copyPercent = -1,
+                    onChoose = {},
+                    onImportTask = {},
+                    onImportGguf = {},
+                    onReload = {},
+                )
+            }
+        }
+        shoot("settings-engine-llama-360x640")
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
+    fun engineCardWithoutTheNativeLibrary() {
+        show {
+            Column(Modifier.fillMaxSize().padding(12.dp)) {
+                EngineCard(
+                    choice = LocalEngine.Llama,
+                    available = false,
+                    ready = false,
+                    present = false,
+                    bytes = 0L,
+                    label = "no .gguf model yet",
+                    note = null,
+                    copyPercent = 42,
+                    onChoose = {},
+                    onImportTask = {},
+                    onImportGguf = {},
+                    onReload = {},
+                )
+            }
+        }
+        shoot("settings-engine-no-ndk-360x640")
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
     fun replyLengthChoices() {
         show {
             Column(Modifier.fillMaxSize().padding(12.dp)) {
@@ -411,6 +481,9 @@ class ScreensRenderTest {
                     modelPresent = true,
                     modelNote = READY_NOTE,
                     modelBytes = 2L * 1024 * 1024 * 1024,
+                    engine = LocalEngine.MediaPipe,
+                    engineAvailable = true,
+                    modelLabel = "Gemma .task",
                     speakOn = true,
                     internetOn = false,
                     wakeOn = false,

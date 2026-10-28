@@ -11,9 +11,22 @@ class PromptTest {
     @Test
     fun chatInstructionsCarryNoToolProtocol() {
         val text = Prompt.system(Mode.Chat, facts = "", languageName = "")
-        assertTrue(text.contains("Chat mode"))
         assertFalse("no tool JSON in the chat prompt", text.contains("\"tool\""))
         assertFalse("no tool menu in the chat prompt", text.contains("Your tools:"))
+    }
+
+    @Test
+    fun chatInstructionsStaySmall() {
+        val text = Prompt.system(Mode.Chat, facts = "", languageName = "")
+        assertTrue("the chat prompt must stay tiny, was ${text.length}", text.length < 700)
+    }
+
+    @Test
+    fun chatInstructionsSayNothingAboutThePhone() {
+        val text = Prompt.system(Mode.Chat, facts = "", languageName = "")
+        for (word in listOf("Control mode", "phone", "message", "alarm", "screen")) {
+            assertFalse("Chat's permissions live in code, not here: $word", text.lowercase().contains(word))
+        }
     }
 
     @Test
@@ -58,7 +71,8 @@ class PromptTest {
         val text = Prompt.system(Mode.Chat, facts = "", languageName = "")
 
         assertFalse(text.contains("a sentence or two for simple things"))
-        assertTrue("detail is asked for when the question needs it", text.contains("proper detail"))
+        assertFalse("the old persona is gone too", text.contains("proper detail"))
+        assertTrue(text.contains(ReplyLength.Default.instruction))
     }
 
     @Test

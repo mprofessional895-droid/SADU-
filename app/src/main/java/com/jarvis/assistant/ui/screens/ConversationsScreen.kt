@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -101,6 +102,8 @@ fun ConversationsScreen(vm: JarvisViewModel) {
             onSend = { vm.sendComposer() },
             onMic = { vm.startListening() },
             onDismissError = { vm.dismissError() },
+            canStop = vm.canStop,
+            onStop = { vm.stopGenerating() },
         )
     }
 }
@@ -291,6 +294,8 @@ fun Chat(
     onSend: () -> Unit,
     onMic: () -> Unit,
     onDismissError: () -> Unit,
+    canStop: Boolean = false,
+    onStop: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val focus = remember { FocusRequester() }
@@ -424,16 +429,26 @@ fun Chat(
                 onClick = onMic,
                 diameter = Dimens.touch,
             )
-            val ready = draft.isNotBlank()
-            RoundIconButton(
-                icon = Icons.AutoMirrored.Rounded.Send,
-                contentDescription = "Send",
-                onClick = onSend,
-                diameter = Dimens.touch,
-                filled = ready,
-                showBorder = !ready,
-                enabled = ready,
-            )
+            if (canStop) {
+                RoundIconButton(
+                    icon = Icons.Rounded.Stop,
+                    contentDescription = "Stop answering",
+                    onClick = onStop,
+                    diameter = Dimens.touch,
+                    filled = true,
+                )
+            } else {
+                val ready = draft.isNotBlank()
+                RoundIconButton(
+                    icon = Icons.AutoMirrored.Rounded.Send,
+                    contentDescription = "Send",
+                    onClick = onSend,
+                    diameter = Dimens.touch,
+                    filled = ready,
+                    showBorder = !ready,
+                    enabled = ready,
+                )
+            }
         }
     }
 }
