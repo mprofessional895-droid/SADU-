@@ -43,7 +43,16 @@ object Prompt {
         turns: List<Turn>,
         text: String,
         length: ReplyLength = ReplyLength.Default,
-    ): String = local(system(Mode.Control, facts, languageName, menu, length), turns, text)
+        riskyAllowed: Boolean = false,
+    ): String =
+        local(
+            system(
+                Mode.Control, facts, languageName, menu,
+                length = length, riskyAllowed = riskyAllowed,
+            ),
+            turns,
+            text,
+        )
 
     /** Instructions only - the system role for a cloud model. */
     fun system(
@@ -56,10 +65,11 @@ object Prompt {
         extra: String = "",
         webResults: Boolean = false,
         canSearch: Boolean = false,
+        riskyAllowed: Boolean = false,
     ): String = if (mode == Mode.Chat) {
         ChatPrompt.build(facts, languageName, length, style, extra, webResults, canSearch)
     } else {
-        ControlPrompt.build(facts, menu, languageName, length)
+        ControlPrompt.build(facts, menu, languageName, length, riskyAllowed)
     }
 
     /** Instructions and conversation, in the model's own format. */

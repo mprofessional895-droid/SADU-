@@ -38,6 +38,8 @@ class Assistant(
     private val internet: () -> Boolean = { true },
     /** How a page is fetched. Swapped in tests so no connection is needed. */
     private val fetch: (String) -> String = WebSearch.live(),
+    /** Whether the controls that act as the user are switched on (Settings). */
+    private val riskyAllowed: () -> Boolean = { false },
 ) {
     private val history = ArrayList<Turn>()
 
@@ -250,7 +252,7 @@ class Assistant(
     }
 
     private fun requestFor(text: String, current: Mode, webResults: Boolean = false): LlmRequest {
-        val menu = if (current == Mode.Control) tools.menu() else ""
+        val menu = if (current == Mode.Control) tools.menu(riskyAllowed()) else ""
         val instructions = Prompt.system(
             mode = current,
             facts = memory.asContext(),
@@ -261,6 +263,7 @@ class Assistant(
             extra = extraInstructions(),
             webResults = webResults,
             canSearch = current == Mode.Chat && internet() && webAnswers(),
+            riskyAllowed = riskyAllowed(),
         )
         val fixed = ContextBudget.estimate(instructions) + ContextBudget.estimate(text)
         val window = ContextBudget.clamp(contextTokens())

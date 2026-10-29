@@ -11,7 +11,7 @@ import com.sadu.assistant.ReplyLength
  */
 object ControlPrompt {
 
-    const val VERSION = "control-1"
+    const val VERSION = "control-2"
 
     private const val PERSONA =
         "You are Sadu, a warm, capable assistant running privately on the user's Android phone. " +
@@ -22,6 +22,7 @@ object ControlPrompt {
         menu: String,
         languageName: String,
         length: ReplyLength = ReplyLength.Default,
+        riskyAllowed: Boolean = false,
     ): String {
         val sb = StringBuilder()
         sb.append(PERSONA)
@@ -59,7 +60,15 @@ object ControlPrompt {
         sb.append("\\n or \\t, and never wrap the whole answer in quotation marks.\n")
         sb.append("- Do not use # headings or a wall of bold. At most one short bold word now and then.\n")
         sb.append("- If the message carries web results, answer from them in plain words and say the ")
-        sb.append("answer comes from a web search.\n\n")
+        sb.append("answer comes from a web search.\n")
+        if (!riskyAllowed) {
+            sb.append("- Messages, calls, app installs and tapping or typing inside other apps are ")
+            sb.append("switched off in this app right now, and those tools are not in your list. If ")
+            sb.append("the user asks for one of them, say plainly that this control is off and that ")
+            sb.append("Settings > What Sadu may do > Risky controls turns it on. Never say you did ")
+            sb.append("it, and never promise to.\n")
+        }
+        sb.append("\n")
         return sb.toString()
     }
 

@@ -48,7 +48,7 @@ class AssistantPhoneGuardTest {
             brain = brain,
             actions = actions,
             memory = Memory(ctx),
-            tools = Tools(actions, Memory(ctx)) { prefs.mode },
+            tools = Tools(actions, Memory(ctx), { prefs.mode }, { prefs.riskyControls }),
             language = { "auto" },
             mode = { prefs.mode },
             contextTokens = { ContextBudget.Default },

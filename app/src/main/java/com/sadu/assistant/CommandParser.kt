@@ -19,6 +19,7 @@ object CommandParser {
         "volume", "flashlight", "torch", "wake", "create", "increase", "decrease", "raise",
         "lower", "go", "navigate", "press", "home", "back", "recent", "recents", "close",
         "show", "enable", "disable", "connect", "put", "switch", "alarm", "screenshot",
+        "pause", "resume", "unpause", "skip", "next", "previous", "stop", "forward",
     )
 
     /** Words that mean the "target" was really just conversational filler. */

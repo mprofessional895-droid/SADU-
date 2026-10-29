@@ -17,6 +17,7 @@ import android.provider.ContactsContract.CommonDataKinds.Phone
 import android.provider.MediaStore
 import android.provider.Settings
 import android.telephony.SmsManager
+import android.view.KeyEvent
 import com.sadu.assistant.control.SaduAccessibilityService
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -87,6 +88,7 @@ class Actions(
             }
         }
         if (t == "forget everything" || t == "forget all" || t == "clear your memory") {
+            if (!prefs.riskyControls) return ToolPolicy.paused("Forgetting what I know about you")
             memory.clear()
             return "Done. I've forgotten everything about you."
         }
@@ -157,6 +159,12 @@ class Actions(
             }
             return volume(dir)
         }
+
+        // ---- music that is already playing ----
+        Regex("\\b(pause|resume|stop|unpause)(?: the)? (?:music|song|playback|audio)\\b")
+            .find(cmd)?.let { return media(it.groupValues[1]) }
+        Regex("\\b(next|previous|last|skip)(?: the)? (?:song|track|music)\\b")
+            .find(cmd)?.let { return media(it.groupValues[1]) }
 
         // ---- wifi / bluetooth settings ----
         val radio = Regex("^(open|show|go to|turn on|turn off|enable|disable|connect)\\b.*\\b(wifi|wi-fi|wi fi|bluetooth)\\b")
@@ -329,7 +337,34 @@ class Actions(
         return if (go(i)) "Alarm set for $label." else "I couldn't open the clock app to set the alarm."
     }
 
+    /**
+     * Pause, resume, skip. Sent as media keys, the same thing a headset button sends, so it
+     * works whatever is playing and changes nothing that cannot be changed back.
+     */
+    fun media(action: String): String = try {
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val key = when (action.trim().lowercase()) {
+            "resume", "play", "unpause" -> KeyEvent.KEYCODE_MEDIA_PLAY
+            "next", "forward", "skip" -> KeyEvent.KEYCODE_MEDIA_NEXT
+            "previous", "last", "back" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+            "stop" -> KeyEvent.KEYCODE_MEDIA_STOP
+            else -> KeyEvent.KEYCODE_MEDIA_PAUSE
+        }
+        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, key))
+        am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, key))
+        when (key) {
+            KeyEvent.KEYCODE_MEDIA_PLAY -> "Playing."
+            KeyEvent.KEYCODE_MEDIA_NEXT -> "Next track."
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> "Previous track."
+            KeyEvent.KEYCODE_MEDIA_STOP -> "Stopped."
+            else -> "Paused."
+        }
+    } catch (e: Exception) {
+        "I couldn't control the music: ${e.message}"
+    }
+
     fun call(who: String): String {
+        if (!prefs.riskyControls) return ToolPolicy.paused("Calling someone")
         val hit = findContact(who) ?: return contactMiss(who)
         val direct = prefs.directCall &&
             ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
@@ -344,6 +379,7 @@ class Actions(
     }
 
     fun sendSms(who: String, body: String): String {
+        if (!prefs.riskyControls) return ToolPolicy.paused("Sending a message")
         if (body.isBlank()) return "What should the message to $who say?"
         val hit = findContact(who.trim()) ?: return contactMiss(who.trim())
         val canSend = ctx.checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
@@ -414,6 +450,7 @@ class Actions(
     }
 
     fun installApp(name: String): String {
+        if (!prefs.riskyControls) return ToolPolicy.paused("Installing an app")
         if (!prefs.internetEnabled) return "Internet is off. Turn on the Internet toggle to install apps."
         val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=" + Uri.encode(name)))
         if (go(market)) return "Opening the Play Store for $name. Tap install there."
@@ -425,6 +462,9 @@ class Actions(
     }
 
     fun accessibilityAction(action: String, text: String?): String {
+        if (!prefs.riskyControls && ToolPolicy.screenRisk(action) == ToolRisk.Elevated) {
+            return ToolPolicy.paused("Tapping and typing inside other apps")
+        }
         val svc = accessibility()
             ?: return "Screen control is off. Turn on Sadu in Settings > Accessibility first."
         return svc.performAction(action, text)

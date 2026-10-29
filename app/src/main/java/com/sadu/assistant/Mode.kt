@@ -34,7 +34,7 @@ object ModePolicy {
         "flashlight", "torch", "battery", "volume", "wifi_settings", "wifi",
         "bluetooth_settings", "bluetooth", "set_alarm", "alarm", "call", "phone",
         "send_sms", "sms", "text", "open_app", "open", "play_music", "play",
-        "screen", "accessibility",
+        "screen", "accessibility", "media", "music",
     )
 
     /** Phone actions are Control mode only; the internet is fine in both. */

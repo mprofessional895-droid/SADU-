@@ -19,6 +19,8 @@ class Tools(
     private val memory: Memory,
     /** Which mode is active. Chat mode only lets the network tools run. */
     private val mode: () -> Mode = { Mode.Control },
+    /** Whether the controls that act as the user are switched on. Off by default. */
+    private val riskyControls: () -> Boolean = { false },
 ) {
 
     val specs: List<ToolSpec> = listOf(
@@ -39,6 +41,7 @@ class Tools(
         ToolSpec("forget", "", "forget everything about the user"),
         ToolSpec("web_search", "query", "search the web (needs Internet on)"),
         ToolSpec("open_url", "url", "open a website (needs Internet on)"),
+        ToolSpec("media", "action (pause|resume|next|previous|stop)", "control the music that is playing"),
         ToolSpec("install_app", "app", "open the app store to install an app (needs Internet on)"),
         ToolSpec(
             "screen",
@@ -47,7 +50,23 @@ class Tools(
         ),
     )
 
-    fun menu(): String = specs.joinToString("\n") { "- ${it.name}(${it.args}): ${it.description}" }
+    /**
+     * The tool list the model is shown. Controls that are switched off are left out of it, so
+     * a small model is not tempted to try one and then explain a failure it never had.
+     */
+    fun menu(risky: Boolean = true): String = specs
+        .filter { risky || it.name.lowercase() !in ToolPolicy.ElevatedTools }
+        .map { spec ->
+            if (!risky && spec.name == "screen") {
+                spec.copy(
+                    args = "action (back|home|recents|scroll_down|scroll_up|read_screen), text",
+                    description = "navigate or read the screen via accessibility",
+                )
+            } else {
+                spec
+            }
+        }
+        .joinToString("\n") { "- ${it.name}(${it.args}): ${it.description}" }
 
     fun run(name: String, args: Map<String, String>): ToolOutcome {
         // Chat mode is enforced here, not only in the prompt: a model that ignores its
@@ -55,6 +74,11 @@ class Tools(
         val key = name.trim().lowercase()
         if (!ModePolicy.allowed(mode(), key) && ModePolicy.isPhoneTool(key)) {
             return ToolOutcome(ModePolicy.refusal())
+        }
+        // The second gate: a control the user has not switched on never runs, whichever model
+        // asked for it and whatever the model believed about its instructions.
+        if (!ToolPolicy.allowed(key, riskyControls(), args)) {
+            return ToolOutcome(ToolPolicy.paused(ToolPolicy.subject(key, args)), handled = false)
         }
         fun arg(vararg keys: String): String {
             for (k in keys) args[k]?.let { if (it.isNotBlank()) return it }
@@ -106,6 +130,7 @@ class Tools(
                 }
                 "forget" -> { memory.clear(); ToolOutcome("Done. I've forgotten everything about you.") }
                 "web_search" -> ToolOutcome(actions.webSearch(arg("query", "value", "q")))
+                "media", "music" -> ToolOutcome(actions.media(arg("action", "cmd", "value")))
                 "open_url" -> ToolOutcome(actions.openUrl(arg("url", "value")))
                 "install_app" -> ToolOutcome(actions.installApp(arg("app", "name", "value")))
                 "screen", "accessibility" -> {

@@ -228,3 +228,31 @@ line, `SEARCH: <query>`, which `Assistant.searchRequest` picks up and answers fr
 - `ui/components/ThoughtField.kt` - "Thought Stream": the faint particle field behind a chat,
   which gathers toward a drifting point while thinking and streams upward while answering.
 - The assistant's turn in a conversation has no bubble: full-width text with a hairline rule.
+
+## Safe control (v0.14)
+
+Control mode now has two gates, not one:
+
+1. `ModePolicy` (`Mode.kt`) - "may this mode touch the phone at all". Chat mode still gets the
+   network and nothing else.
+2. `ToolPolicy` (`ToolPolicy.kt`) - "is this particular control switched on". `Prefs.riskyControls`,
+   off by default.
+
+Elevated (needs the switch): `call`, `send_sms`, `install_app`, `forget`, and the `screen`
+actions `tap` / `type`. Anything unnamed, or any unknown screen action, is elevated - the
+allow-list is `ToolPolicy.SafeScreenActions`, so a new action is closed until it is added.
+
+The gate is enforced at every entry point, because typed commands reach `Actions` before the
+model is asked: `Tools.run`, `Actions.call`, `Actions.sendSms`, `Actions.installApp`,
+`Actions.accessibilityAction`, and the `forget everything` rule. Turning the switch on is
+necessary but not sufficient for messages - `confirmSms` / `directCall` still apply on top.
+
+`Tools.menu(risky)` leaves the switched-off tools out of what the model is shown, so a small
+model is not tempted to try one. `ControlPrompt` (`control-2`) also states plainly that those
+controls are off. The prompt is a courtesy; `ToolPolicy` is the enforcement.
+
+Safe and new in v0.14: `media` (pause / resume / next / previous / stop via media keys).
+`CommandParser.ACTION_WORDS` needs any new command verb, or the rule layer never sees it.
+
+Tests: `ToolPolicyTest` (the classification itself), `SafeControlTest` (the gates with Robolectric),
+plus two `ScreensRenderTest` shots of the switch off and on.
