@@ -360,6 +360,14 @@ fun SettingsContent(
         item(key = "cloud") {
             Column {
                 SectionLabel("Cloud brain", modifier = Modifier.padding(bottom = 8.dp))
+                Text(
+                    text = "When this is on it answers in both modes, Chat and Control - the " +
+                        "phone tools work the same, because the tool menu is built by Sadu, " +
+                        "not by the model.",
+                    color = Ink.TextDim,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 10.dp),
+                )
                 CloudCard(
                     enabled = state.cloudEnabled,
                     provider = state.cloudProvider,

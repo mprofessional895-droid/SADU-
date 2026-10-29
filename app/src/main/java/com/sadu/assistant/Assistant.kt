@@ -64,6 +64,12 @@ class Assistant(
     /** The turns currently remembered, for tests and for saving. */
     fun remembered(): List<Turn> = history.toList()
 
+    /** Finishes a call or message the user picked from a suggestion. */
+    fun chooseContact(name: String): String? =
+        actions.chooseName(name)?.also { remember("call or message $name", it) }
+
+    fun clearContactChoice() = actions.clearChoices()
+
     private fun remember(text: String, reply: String) {
         history.add(Turn(text, reply))
         while (history.size > MaxTurns) history.removeAt(0)
@@ -375,28 +381,11 @@ class Assistant(
         return Locale.forLanguageTag(tag).displayLanguage.takeIf { it.isNotBlank() }.orEmpty()
     }
 
-    private fun parseToolCall(raw: String): Pair<String, Map<String, String>>? {
-        val start = raw.indexOf('{')
-        val end = raw.lastIndexOf('}')
-        if (start < 0 || end <= start) return null
-        return try {
-            val obj = JSONObject(raw.substring(start, end + 1))
-            val name = obj.optString("tool", obj.optString("action", "")).trim()
-            if (name.isBlank()) return null
-            val args = HashMap<String, String>()
-            val a = obj.optJSONObject("args") ?: obj.optJSONObject("arguments")
-            if (a != null) {
-                val keys = a.keys()
-                while (keys.hasNext()) {
-                    val k = keys.next()
-                    args[k] = a.opt(k)?.toString() ?: ""
-                }
-            }
-            name to args
-        } catch (_: Throwable) {
-            null
-        }
-    }
+    /**
+     * A tool call in any of the shapes a model produces - bare JSON, fenced JSON, or the
+     * OpenAI name/arguments pair. Shared with the cloud path through [ToolJson].
+     */
+    private fun parseToolCall(raw: String): Pair<String, Map<String, String>>? = ToolJson.first(raw)
 
     private fun cleanChat(raw: String): String = ReplyText.clean(raw)
 }

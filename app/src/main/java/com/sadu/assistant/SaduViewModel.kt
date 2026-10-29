@@ -68,7 +68,10 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         get() = if (prefs.localEngine == LocalEngine.Llama) llamaEngine else mediaPipeEngine
 
     private val actions = Actions(ctx, memory, prefs) { SaduAccessibilityService.instance }
-        .also { a -> a.onNeedPermission = { perm -> noteNeeded(perm, lastAsked) } }
+        .also { a ->
+            a.onNeedPermission = { perm -> noteNeeded(perm, lastAsked) }
+            a.onChoices = { names -> nameChoices = names }
+        }
     private val tools = Tools(actions, memory, { prefs.mode }, { prefs.riskyControls })
     // Starts on whichever engine the settings point at, so a cold start and a switch agree.
     private val localBrain = SwitchableBrain(brainFor(engine))
@@ -156,6 +159,10 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The text in the composer. Kept here so it survives moving between sections. */
     var composerText by mutableStateOf("")
+
+    /** Similar names Sadu offered, shown as a chooser over the chat. */
+    var nameChoices by mutableStateOf<List<String>>(emptyList())
+        private set
 
     /** A permission an action asked for mid-sentence, offered as a button in the chat. */
     var neededPermission by mutableStateOf<String?>(null)
@@ -850,6 +857,19 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     fun noteNeeded(permission: String, forText: String?) {
         neededPermission = permission
         retryAfterGrant = forText
+    }
+
+    /** A name tapped in the chooser: do the call or message the user meant. */
+    fun chooseName(name: String) {
+        nameChoices = emptyList()
+        val reply = assistant.chooseContact(name) ?: return
+        push(ChatMsg(reply, fromUser = false))
+        persist()
+    }
+
+    fun dismissChoices() {
+        nameChoices = emptyList()
+        assistant.clearContactChoice()
     }
 
     fun clearNeededPermission() {
