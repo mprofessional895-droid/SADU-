@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sadu.assistant.brain.Brain
+import com.sadu.assistant.brain.BrainRouter
 import com.sadu.assistant.brain.LlmRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -116,6 +117,39 @@ class AssistantWebTest {
         assertTrue("the results went to the model", asked.contains("[web results for"))
         assertTrue(asked, asked.contains("Python (programming language)"))
         assertTrue("the question is still in there", asked.contains("python programming"))
+    }
+
+    /**
+     * Search is not a cloud-only feature. Whichever brain is answering - the cloud model or
+     * the one on the phone - the results go into its prompt and it writes the answer.
+     */
+    @Test
+    fun theOnDeviceModelAlsoAnswersFromTheResults() {
+        val cloud = FakeBrain("cloud answer", fails = true)
+        val local = FakeBrain("The on-device model wrote this from the search results.")
+        val router = BrainRouter(local, cloud, cloudWanted = { false })
+
+        val answer = assistant(router).respond("search about python programming")
+
+        assertEquals("The on-device model wrote this from the search results.", answer)
+        assertEquals("the cloud was not used", 0, cloud.asked)
+        val asked = local.last?.user.orEmpty()
+        assertTrue("the results reach the on-device prompt", asked.contains("[web results for"))
+        assertTrue(asked, asked.contains("Python (programming language)"))
+    }
+
+    /** And the on-device model may ask for a look-up itself, the same as the cloud one. */
+    @Test
+    fun theOnDeviceModelCanAskForTheSearchOnItsOwn() {
+        val cloud = FakeBrain("cloud answer", fails = true)
+        val local = SequenceBrain("SEARCH: python programming", "Guido van Rossum, according to what I found.")
+        val router = BrainRouter(local, cloud, cloudWanted = { false })
+
+        val answer = assistant(router).respond("who made python")
+
+        assertTrue(answer, answer.startsWith("Guido van Rossum"))
+        assertEquals("asked once, then again with the results", 2, local.asked)
+        assertTrue(local.last?.user.orEmpty().contains("[web results for"))
     }
 
     @Test
