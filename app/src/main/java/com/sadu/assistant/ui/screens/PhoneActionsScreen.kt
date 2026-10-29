@@ -1,6 +1,7 @@
 package com.sadu.assistant.ui.screens
 
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -36,7 +37,22 @@ fun PhoneActionsScreen(vm: SaduViewModel) {
     val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
-    ) { vm.refreshRuntime() }
+    ) { result ->
+        vm.refreshRuntime()
+        // A permission denied for good shows no dialog, so "Allow" would look dead. Send the
+        // user to the one screen that can still turn it on.
+        if (result.values.any { !it }) {
+            try {
+                context.startActivity(
+                    Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.fromParts("package", context.packageName, null),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } catch (_: Throwable) {
+            }
+        }
+    }
 
     LaunchedEffect(Unit) { vm.refreshRuntime() }
 

@@ -38,6 +38,12 @@ class Actions(
 ) {
 
     /**
+     * Called when an action needs a permission the app does not have, so the screen can offer
+     * to ask for it instead of only printing a sentence about Settings. Set by the view model.
+     */
+    var onNeedPermission: ((String) -> Unit)? = null
+
+    /**
      * The query when the message reads as "search about X" / "google X" / "look up X",
      * or null. It only ever sees text that already looks like a command, so ordinary
      * conversation cannot be mistaken for a search.
@@ -216,7 +222,7 @@ class Actions(
         // ---- call ----
         Regex("^(?:call|phone|dial|ring)\\s+(.+)$").find(cmd)?.let {
             val who = it.groupValues[1].trim()
-            if (CommandParser.isRealTarget(who) && findContact(who) != null) return call(who)
+            if (CommandParser.isRealTarget(who)) return call(who)
         }
 
         // ---- open an app (only if we really recognise one) ----
@@ -393,13 +399,14 @@ class Actions(
         val direct = prefs.directCall &&
             ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
         if (direct) {
-            val i = Intent(Intent.ACTION_CALL, Uri.parse("tel:" + Uri.encode(hit.first)))
+            val i = Intent(Intent.ACTION_CALL, Uri.parse("tel:" + hit.first.trim()))
             return if (go(i)) "Calling ${hit.second}." else "I couldn't start the call."
         }
-        val i = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(hit.first)))
+        val i = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + hit.first.trim()))
         return if (go(i)) {
-            "Opening the dialer for ${hit.second}. Tap the call button to confirm."
-        } else "I couldn't open the dialer."
+            "Opening ${hit.second}'s number in the dialer - tap the call button to confirm. " +
+                "Settings > Messages and calls > Place calls directly lets me call without that tap."
+        } else "I couldn't open the dialer. Is a phone app installed?"
     }
 
     fun sendSms(who: String, body: String): String {
@@ -438,11 +445,9 @@ class Actions(
         if (body.isBlank()) return ToolOutcome("What should the message to $who say?")
         val hit = findContact(who.trim())
             ?: return ToolOutcome(contactMiss(who.trim()))
-        val digits = hit.first.filter { it.isDigit() || it == '+' }.removePrefix("+")
-        if (digits.length < 7) return ToolOutcome("I couldn't read a phone number for ${hit.second}.")
-        val sms = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
-        val cc = sms?.networkCountryIso?.uppercase().orEmpty().ifBlank { "IN" }
-        val url = "https://wa.me/" + Uri.encode(cc + digits) + "?text=" + Uri.encode(body)
+        val intl = internationalNumber(hit.first)
+            ?: return ToolOutcome("I couldn't read a phone number for ${hit.second}.")
+        val url = "https://wa.me/$intl?text=" + Uri.encode(body)
         val strong = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             .setPackage("com.whatsapp")
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -553,7 +558,7 @@ class Actions(
         ).find(t)
         if (call != null) {
             val who = call.groupValues[1].trim()
-            if (CommandParser.isRealTarget(who) && findContact(who) != null) return call(who)
+            if (CommandParser.isRealTarget(who)) return call(who)
         }
         val msg = Regex(
             "^(.+?)\\s+ko\\s+(?:whatsapp|wa|message|msg|text|sms)\\s*(?:me|par|pe|per)?\\s*" +
@@ -563,7 +568,7 @@ class Actions(
         if (msg != null) {
             val who = msg.groupValues[1].trim()
             val body = msg.groupValues[2].trim().trim('.', '!')
-            if (CommandParser.isRealTarget(who) && body.isNotBlank() && findContact(who) != null) {
+            if (CommandParser.isRealTarget(who) && body.isNotBlank()) {
                 return if (t.contains("whatsapp") || Regex("\\bwa\\b").containsMatchIn(t)) {
                     whatsapp(who, body).display
                 } else {
@@ -575,6 +580,25 @@ class Actions(
     }
 
     /** "whatsapp mummy that I am late", "message mummy on whatsapp saying ...". */
+    /**
+     * wa.me wants digits and a country code, no plus. A contact already saved as +91987...
+     * must not get a second country code, which would point WhatsApp at the wrong person.
+     */
+    private fun internationalNumber(raw: String): String? {
+        val kept = raw.filter { it.isDigit() || it == '+' }
+        val digits = kept.filter { it.isDigit() }
+        if (digits.length < 7) return null
+        if (kept.startsWith("+")) return digits
+        val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+        val cc = tm?.networkCountryIso?.uppercase().orEmpty().ifBlank { "IN" }
+        return when {
+            // Already carries the country code but no plus, e.g. 919876543210.
+            digits.startsWith(cc) && digits.length >= cc.length + 9 -> digits
+            digits.startsWith("0") -> cc + digits.drop(1)
+            else -> cc + digits
+        }
+    }
+
     private fun whatsappOrder(cmd: String): Pair<String, String>? {
         val a = Regex(
             "^whatsapp\\s+(.+?)\\s+(?:that|saying|ki|ke|:)\\s+(.+)$"
@@ -641,9 +665,10 @@ class Actions(
 
     private fun contactMiss(who: String): String =
         if (ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            "I need permission to read your contacts. Please allow it in the app's permission settings."
+            onNeedPermission?.invoke(Manifest.permission.READ_CONTACTS)
+            "I need to look at your contacts to find $who. Allow contacts above and ask me again."
         } else {
-            "I couldn't find \"$who\" in your contacts."
+            "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
         }
 }
 

@@ -68,6 +68,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         get() = if (prefs.localEngine == LocalEngine.Llama) llamaEngine else mediaPipeEngine
 
     private val actions = Actions(ctx, memory, prefs) { SaduAccessibilityService.instance }
+        .also { a -> a.onNeedPermission = { perm -> noteNeeded(perm, lastAsked) } }
     private val tools = Tools(actions, memory, { prefs.mode }, { prefs.riskyControls })
     // Starts on whichever engine the settings point at, so a cold start and a switch agree.
     private val localBrain = SwitchableBrain(brainFor(engine))
@@ -155,6 +156,12 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The text in the composer. Kept here so it survives moving between sections. */
     var composerText by mutableStateOf("")
+
+    /** A permission an action asked for mid-sentence, offered as a button in the chat. */
+    var neededPermission by mutableStateOf<String?>(null)
+        private set
+    private var retryAfterGrant: String? = null
+    private var lastAsked: String? = null
         private set
     var composerToken by mutableStateOf(0)
         private set
@@ -462,6 +469,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun submit(raw: String) {
         val text = raw.trim()
+        lastAsked = text
         if (text.isEmpty() || aiState == AiState.Processing || aiState == AiState.Listening) return
         errorText = null
         answeredBy = null
@@ -837,6 +845,32 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     }.getOrDefault(0L)
 
     // ------------------------------------------------------------------ runtime
+
+    /** Called by [Actions] when an action cannot run without a permission. */
+    fun noteNeeded(permission: String, forText: String?) {
+        neededPermission = permission
+        retryAfterGrant = forText
+    }
+
+    fun clearNeededPermission() {
+        neededPermission = null
+        retryAfterGrant = null
+    }
+
+    /**
+     * After the permission dialog: if it was granted, run the sentence that needed it again,
+     * so the user does not have to repeat themselves.
+     */
+    fun permissionAnswered() {
+        refreshRuntime()
+        val permission = neededPermission
+        val text = retryAfterGrant
+        neededPermission = null
+        retryAfterGrant = null
+        val ok = permission != null &&
+            ContextCompat.checkSelfPermission(ctx, permission) == PackageManager.PERMISSION_GRANTED
+        if (ok && text != null) submit(text)
+    }
 
     fun refreshRuntime() {
         val sdk = Build.VERSION.SDK_INT

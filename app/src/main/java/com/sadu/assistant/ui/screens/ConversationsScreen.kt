@@ -1,5 +1,7 @@
 package com.sadu.assistant.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -115,6 +117,9 @@ fun ConversationsScreen(vm: SaduViewModel) {
             canStop = vm.canStop,
             onStop = { vm.stopGenerating() },
             thinkingNote = vm.busyNote,
+            neededPermission = vm.neededPermission,
+            onAllowPermission = { vm.permissionAnswered() },
+            onSkipPermission = { vm.clearNeededPermission() },
         )
     }
 }
@@ -308,6 +313,9 @@ fun Chat(
     canStop: Boolean = false,
     onStop: () -> Unit = {},
     thinkingNote: String? = null,
+    neededPermission: String? = null,
+    onAllowPermission: () -> Unit = {},
+    onSkipPermission: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val focus = remember { FocusRequester() }
@@ -426,6 +434,14 @@ fun Chat(
                 text = answeredBy,
                 color = Ink.TextDim,
                 style = MaterialTheme.typography.labelSmall,
+            )
+        }
+
+        if (neededPermission != null) {
+            PermissionAsk(
+                permission = neededPermission,
+                onResult = onAllowPermission,
+                onSkip = onSkipPermission,
             )
         }
 
@@ -615,5 +631,43 @@ private fun ThinkingBubble(note: String? = null) {
                 style = MaterialTheme.typography.labelMedium,
             )
         }
+    }
+}
+
+/** The plain-English name of a permission, for the one-button ask in the chat. */
+fun permissionTitle(permission: String): String = when (permission) {
+    "android.permission.READ_CONTACTS" -> "your contacts"
+    "android.permission.CALL_PHONE" -> "the phone app, to place calls"
+    "android.permission.SEND_SMS" -> "sending text messages"
+    "android.permission.RECORD_AUDIO" -> "the microphone"
+    else -> "one permission"
+}
+
+/**
+ * One tap instead of a trip through Settings. Shown only when an action actually needed the
+ * permission, so it never asks for anything "just in case".
+ */
+@Composable
+private fun PermissionAsk(permission: String, onResult: () -> Unit, onSkip: () -> Unit) {
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { _ -> onResult() }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Dimens.gutter, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Sadu needs to read ${permissionTitle(permission)} for that. " +
+                "Allow it and I will finish the request.",
+            color = Ink.Text,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        GhostButton("Allow", { launcher.launch(permission) })
+        GhostButton("Not now", onSkip)
     }
 }

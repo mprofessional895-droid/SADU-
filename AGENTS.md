@@ -281,3 +281,21 @@ step it belongs to.
 - **Hindi word order** ("papa ko call kar", "mummy ko whatsapp me message kar ki ...") is
   parsed in `Actions.hindiOrder`, before `CommandParser.commandText`, and only when a real
   contact matches. `Relations` maps papa/dad/abbu, mummy/mom/maa, bhai, behen, etc.
+
+## Calling, and why it looked broken (v0.16)
+
+Three separate faults made "call papa" do nothing or reach the wrong number:
+
+1. **The rule only fired when the contact already resolved** (and so only with contacts
+   permission). Otherwise it returned null and the message silently became conversation.
+   Rules now decide "is this an order" and then always answer: dialing, "held back",
+   "I couldn't find X", or "I need your contacts".
+2. **`Uri.encode("tel:" + number)`** turned the leading `+` into `%2B`, so `tel:%2B91...`
+   reached the dialer. A `tel:` URI takes the number as written - do not encode it.
+3. **WhatsApp doubled the country code**: a contact saved as `+91987...` had `IN` prepended
+   again. `Actions.internationalNumber` now strips `+`, drops a leading `0`, and only adds
+   the country code when it is missing.
+
+Also: `Actions.onNeedPermission` lets the chat offer an **Allow** button and then replays the
+sentence after the grant; a permission denied for good in the Phone Actions screen opens the
+app's settings page instead of doing nothing.
