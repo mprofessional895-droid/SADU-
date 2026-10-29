@@ -70,6 +70,9 @@ class Actions(
         val t = clean.lowercase()
         val ic = RegexOption.IGNORE_CASE
 
+        // A "yes" or a corrected name belongs to the suggestion we just made.
+        if (!chatOnly) answerPick(clean)?.let { return it }
+
         // ---- memory ----
         Regex(
             "^(?:(?:hey |ok |okay )?sadu[ ,]+)?(?:please )?" +
@@ -395,16 +398,20 @@ class Actions(
 
     fun call(who: String): String {
         if (!prefs.riskyControls) return ToolPolicy.paused("Calling someone")
-        val hit = findContact(who) ?: return contactMiss(who)
+        val hit = findContact(who) ?: return contactMiss(who, What.Call, "")
+        return callContact(hit)
+    }
+
+    private fun callContact(hit: Contact): String {
         val direct = prefs.directCall &&
             ctx.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED
         if (direct) {
-            val i = Intent(Intent.ACTION_CALL, Uri.parse("tel:" + hit.first.trim()))
-            return if (go(i)) "Calling ${hit.second}." else "I couldn't start the call."
+            val i = Intent(Intent.ACTION_CALL, Uri.parse("tel:" + hit.number.trim()))
+            return if (go(i)) "Calling ${hit.name}." else "I couldn't start the call."
         }
-        val i = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + hit.first.trim()))
+        val i = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + hit.number.trim()))
         return if (go(i)) {
-            "Opening ${hit.second}'s number in the dialer - tap the call button to confirm. " +
+            "Opening ${hit.name}'s number in the dialer - tap the call button to confirm. " +
                 "Settings > Messages and calls > Place calls directly lets me call without that tap."
         } else "I couldn't open the dialer. Is a phone app installed?"
     }
@@ -412,26 +419,26 @@ class Actions(
     fun sendSms(who: String, body: String): String {
         if (!prefs.riskyControls) return ToolPolicy.paused("Sending a message")
         if (body.isBlank()) return "What should the message to $who say?"
-        val hit = findContact(who.trim()) ?: return contactMiss(who.trim())
+        val hit = findContact(who.trim()) ?: return contactMiss(who.trim(), What.Message, body)
         val canSend = ctx.checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
         if (canSend && !prefs.confirmSms) {
             return try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     val sm = ctx.getSystemService(SmsManager::class.java)
-                    sm.sendTextMessage(hit.first, null, body, null, null)
+                    sm.sendTextMessage(hit.number, null, body, null, null)
                 } else {
                     @Suppress("DEPRECATION")
-                    SmsManager.getDefault().sendTextMessage(hit.first, null, body, null, null)
+                    SmsManager.getDefault().sendTextMessage(hit.number, null, body, null, null)
                 }
-                "Message sent to ${hit.second}."
+                "Message sent to ${hit.name}."
             } catch (e: Exception) {
                 "I couldn't send the message: ${e.message}"
             }
         }
-        val i = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(hit.first)))
+        val i = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + hit.number.trim()))
             .putExtra("sms_body", body)
         return if (go(i)) {
-            "I've written the message to ${hit.second}. Tap send in the Messages app to confirm."
+            "I've written the message to ${hit.name}. Tap send in the Messages app to confirm."
         } else "I couldn't open the messages app."
     }
 
@@ -444,33 +451,45 @@ class Actions(
         if (!prefs.riskyControls) return ToolOutcome(ToolPolicy.paused("Messaging someone"))
         if (body.isBlank()) return ToolOutcome("What should the message to $who say?")
         val hit = findContact(who.trim())
-            ?: return ToolOutcome(contactMiss(who.trim()))
-        val intl = internationalNumber(hit.first)
-            ?: return ToolOutcome("I couldn't read a phone number for ${hit.second}.")
-        val url = "https://wa.me/$intl?text=" + Uri.encode(body)
-        val strong = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            .setPackage("com.whatsapp")
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (go(strong)) {
+            ?: return ToolOutcome(contactMiss(who.trim(), What.Message, body))
+        if (openWhatsApp(hit, body)) {
             return ToolOutcome(
-                display = "I've opened WhatsApp with the message to ${hit.second} ready. " +
-                    "Tap Send.",
+                display = "I've opened WhatsApp with the message to ${hit.name} ready. Tap Send.",
                 awaitingUser = true,
                 confirmHint = "Send in WhatsApp",
             )
         }
-        val any = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return if (go(any)) {
-            ToolOutcome(
-                display = "WhatsApp isn't installed, so I opened that message in your browser " +
-                    "instead. Finish it there.",
-                awaitingUser = true,
-                confirmHint = "Send",
-            )
-        } else {
-            ToolOutcome("I couldn't open WhatsApp. Check that it is installed.")
+        return ToolOutcome("I couldn't open WhatsApp. Check that it is installed.")
+    }
+
+    /**
+     * WhatsApp by the contact's own row first.
+     *
+     * A `wa.me` link makes WhatsApp look the *number* up on its servers, which fails for a
+     * number the account does not use - even though the person is sitting right there in the
+     * contact list. Opening the contact's data row instead hands WhatsApp the saved contact,
+     * so the chat opens the same way it does from the contact app.
+     */
+    private fun openWhatsApp(hit: Contact, body: String): Boolean {
+        hit.dataId?.let { id ->
+            val uri = Uri.parse("content://com.android.contacts/data/" + id)
+            for (pkg in WHATSAPP_PACKAGES) {
+                if (go(Intent(Intent.ACTION_VIEW, uri).setPackage(pkg))) return true
+            }
         }
+        val intl = internationalNumber(hit.number) ?: return false
+        val url = "https://wa.me/$intl?text=" + Uri.encode(body)
+        for (pkg in WHATSAPP_PACKAGES) {
+            if (go(Intent(Intent.ACTION_VIEW, Uri.parse(url)).setPackage(pkg))) return true
+        }
+        // `smsto:` with the package set also lands in a chat, and some builds prefer it.
+        for (pkg in WHATSAPP_PACKAGES) {
+            val i = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + intl))
+                .putExtra("sms_body", body)
+                .setPackage(pkg)
+            if (go(i)) return true
+        }
+        return go(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 
     fun openApp(name: String): String {
@@ -634,15 +653,29 @@ class Actions(
      * contact saved under any spelling of the same relation is still found; the exact
      * spelling always wins, so nothing is guessed when a real match exists.
      */
-    private fun findContact(query: String): Pair<String, String>? {
+    /** A saved contact. [dataId] is the row WhatsApp needs to open the *saved* chat. */
+    data class Contact(val name: String, val number: String, val dataId: Long? = null)
+
+    /** Which action was waiting on a name the user had to confirm. */
+    enum class What { Call, Message }
+
+    private class Pick(val what: What, val body: String, val options: List<Contact>)
+
+    /**
+     * A name that matched nothing, held only until the very next message so "yes" or the
+     * right name finishes the job. One turn only: a stale guess must never fire later.
+     */
+    private var pick: Pick? = null
+
+    private fun canReadContacts(): Boolean =
+        ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+
+    private fun findContact(query: String): Contact? {
         val q = query.trim()
         if (Regex("^[+0-9 ()\\-]{5,}$").matches(q)) {
-            return q.filter { it.isDigit() || it == '+' } to q
+            return Contact(q, q.filter { it.isDigit() || it == '+' })
         }
-        if (q.isEmpty()) return null
-        if (ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            return null
-        }
+        if (q.isEmpty() || !canReadContacts()) return null
         lookupContact(q)?.let { return it }
         for (variant in Relations.variants(q)) {
             if (variant.equals(q, ignoreCase = true)) continue
@@ -651,26 +684,129 @@ class Actions(
         return null
     }
 
-    private fun lookupContact(name: String): Pair<String, String>? = try {
+    /**
+     * Rows for one name, preferring a mobile - a landline is the usual reason a WhatsApp
+     * chat refuses to open.
+     */
+    private fun lookupContact(name: String): Contact? = try {
         ctx.contentResolver.query(
             Phone.CONTENT_URI,
-            arrayOf(Phone.DISPLAY_NAME, Phone.NUMBER),
+            arrayOf(Phone._ID, Phone.DISPLAY_NAME, Phone.NUMBER, Phone.TYPE),
             "${Phone.DISPLAY_NAME} LIKE ?",
             arrayOf("%$name%"),
-            null
-        )?.use { c -> if (c.moveToFirst()) c.getString(1) to c.getString(0) else null }
+            null,
+        )?.use { c ->
+            var best: Contact? = null
+            var bestRank = Int.MAX_VALUE
+            while (c.moveToNext()) {
+                val number = c.getString(2)?.trim().orEmpty()
+                if (number.isBlank()) continue
+                val type = if (c.isNull(3)) 0 else c.getInt(3)
+                val rank = when (type) {
+                    Phone.TYPE_MOBILE -> 0
+                    else -> 1
+                }
+                if (rank < bestRank) {
+                    bestRank = rank
+                    best = Contact(c.getString(1) ?: name, number, c.getLong(0))
+                }
+            }
+            best
+        }
     } catch (_: Throwable) {
         null
     }
 
-    private fun contactMiss(who: String): String =
-        if (ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+    /** Every saved contact, best number first. Used only to suggest, never to act on its own. */
+    private fun allContacts(): List<Contact> = try {
+        ctx.contentResolver.query(
+            Phone.CONTENT_URI,
+            arrayOf(Phone._ID, Phone.DISPLAY_NAME, Phone.NUMBER, Phone.TYPE),
+            null,
+            null,
+            null,
+        )?.use { c ->
+            val byName = LinkedHashMap<String, Contact>()
+            val rank = HashMap<String, Int>()
+            while (c.moveToNext()) {
+                val name = c.getString(1)?.trim().orEmpty()
+                val number = c.getString(2)?.trim().orEmpty()
+                if (name.isBlank() || number.isBlank()) continue
+                val type = if (c.isNull(3)) 0 else c.getInt(3)
+                val r = if (type == Phone.TYPE_MOBILE) 0 else 1
+                val key = name.lowercase()
+                if (rank[key] ?: Int.MAX_VALUE > r) {
+                    rank[key] = r
+                    byName[key] = Contact(name, number, c.getLong(0))
+                }
+            }
+            byName.values.toList()
+        } ?: emptyList()
+    } catch (_: Throwable) {
+        emptyList()
+    }
+
+    /**
+     * Nothing matched. Before saying no, offer the names that are close - a typed or spoken
+     * name is often one letter off, and "did you mean Papa?" is a shorter conversation than
+     * "I couldn't find that".
+     */
+    private fun contactMiss(who: String, what: What, body: String): String {
+        if (!canReadContacts()) {
             onNeedPermission?.invoke(Manifest.permission.READ_CONTACTS)
-            "I need to look at your contacts to find $who. Allow contacts above and ask me again."
-        } else {
-            "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
+            return "I need to look at your contacts to find $who. Allow contacts above and ask me again."
         }
+        val saved = allContacts()
+        val options = Suggest.closest(who, saved.map { it.name })
+            .mapNotNull { name -> saved.firstOrNull { it.name.equals(name, ignoreCase = true) } }
+        if (options.isEmpty()) {
+            return "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
+        }
+        pick = Pick(what, body, options)
+        return Suggest.question(who, options.map { it.name })
+            ?: "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
+    }
+
+    /**
+     * The follow-up to a suggestion. Returns null when the message is not about the
+     * suggestion at all, so ordinary conversation carries on untouched.
+     */
+    private fun answerPick(clean: String): String? {
+        val held = pick ?: return null
+        val t = clean.lowercase().trim().trim('?', '!', '.')
+        val names = held.options.joinToString(", ") { it.name }
+
+        if (t in YES) {
+            if (held.options.size == 1) {
+                pick = null
+                return runPick(held, held.options.first())
+            }
+            return "Which one - $names? Tell me the name or its number."
+        }
+        t.toIntOrNull()?.let { n ->
+            if (n in 1..held.options.size) {
+                pick = null
+                return runPick(held, held.options[n - 1])
+            }
+        }
+        held.options.firstOrNull { t.contains(it.name.lowercase()) }?.let {
+            pick = null
+            return runPick(held, it)
+        }
+        // Anything else: drop the guess rather than surprise the user with it later.
+        pick = null
+        return null
+    }
+
+    private fun runPick(held: Pick, contact: Contact): String = when (held.what) {
+        What.Call -> callContact(contact)
+        What.Message -> whatsapp(contact.name, held.body).display
+    }
 }
+
+/** "yes" in the shapes people actually type after a suggestion. */
+private val YES = setOf("yes", "yeah", "yep", "haan", "han", "ha", "haa", "ok", "okay", "theek hai", "sahi")
+private val WHATSAPP_PACKAGES = listOf("com.whatsapp", "com.whatsapp.w4b")
 
 /** Said when a look-up is asked for while the Internet switch is off. */
 private const val INTERNET_OFF =

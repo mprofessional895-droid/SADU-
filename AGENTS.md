@@ -299,3 +299,16 @@ Three separate faults made "call papa" do nothing or reach the wrong number:
 Also: `Actions.onNeedPermission` lets the chat offer an **Allow** button and then replays the
 sentence after the grant; a permission denied for good in the Phone Actions screen opens the
 app's settings page instead of doing nothing.
+
+## WhatsApp and name guessing (v0.17)
+
+- **WhatsApp opens the contact's row, not a number.** `wa.me/<number>` asks WhatsApp's servers
+  to resolve a number, which fails when the account does not use it - even though the person
+  is saved. `Actions.openWhatsApp` tries `content://com.android.contacts/data/<dataId>` with
+  `com.whatsapp` / `com.whatsapp.w4b` first, then `wa.me`, then `smsto:` with the package.
+- **A mobile always beats a landline.** `lookupContact` / `allContacts` rank
+  `Phone.TYPE_MOBILE` first; picking the first row was why chats landed on a number with no
+  WhatsApp account.
+- **Close names are suggested, never acted on.** `Suggest` (pure Kotlin, Levenshtein +
+  prefix/contains) offers up to 3 names. `Actions.pick` holds the pending call/message for
+  exactly one turn; "yes" / "1..3" / the name itself finishes it, anything else drops it.
