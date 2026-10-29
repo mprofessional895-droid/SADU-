@@ -8,6 +8,9 @@ data class ToolOutcome(
     val display: String,
     val speak: String = display,
     val handled: Boolean = true,
+    /** True when the action opened something and the user still has to tap [confirmHint]. */
+    val awaitingUser: Boolean = false,
+    val confirmHint: String? = null,
 )
 
 /**
@@ -26,7 +29,11 @@ class Tools(
     val specs: List<ToolSpec> = listOf(
         ToolSpec("flashlight", "on (true|false)", "turn the phone flashlight on or off"),
         ToolSpec("battery", "", "report the battery level"),
-        ToolSpec("volume", "direction (up|down|mute|unmute)", "change media volume"),
+        ToolSpec(
+            "volume",
+            "direction (up|down|mute|unmute), level (0-100)",
+            "change media volume; level sets it exactly when given"
+        ),
         ToolSpec("wifi_settings", "", "open Wi-Fi settings"),
         ToolSpec("bluetooth_settings", "", "open Bluetooth settings"),
         ToolSpec("time", "", "tell the current time"),
@@ -34,6 +41,11 @@ class Tools(
         ToolSpec("set_alarm", "time", "set an alarm, e.g. 6:30 am"),
         ToolSpec("call", "contact", "call a saved contact by name"),
         ToolSpec("send_sms", "contact, message", "send a text message to a contact"),
+        ToolSpec(
+            "whatsapp",
+            "contact, message",
+            "write a WhatsApp message to a contact and open it; the user taps Send"
+        ),
         ToolSpec("open_app", "app", "open an installed app by name"),
         ToolSpec("play_music", "query", "play music or a song"),
         ToolSpec("remember", "fact", "save a fact about the user"),
@@ -54,6 +66,10 @@ class Tools(
      * The tool list the model is shown. Controls that are switched off are left out of it, so
      * a small model is not tempted to try one and then explain a failure it never had.
      */
+    /** Every tool name the app knows, including ones hidden from the menu right now. */
+    fun has(name: String): Boolean =
+        specs.any { it.name.equals(name.trim(), ignoreCase = true) }
+
     fun menu(risky: Boolean = true): String = specs
         .filter { risky || it.name.lowercase() !in ToolPolicy.ElevatedTools }
         .map { spec ->
@@ -92,9 +108,14 @@ class Tools(
                     ToolOutcome(actions.setTorch(on))
                 }
                 "battery" -> ToolOutcome(actions.battery())
-                "volume" -> ToolOutcome(
-                    actions.volume(arg("direction", "action", "value").ifBlank { "up" }.lowercase())
-                )
+                "volume" -> {
+                    val level = arg("level", "percent", "to").toIntOrNull()
+                    val direction = arg("direction", "action").lowercase()
+                    ToolOutcome(
+                        if (level != null) actions.volumeLevel(level)
+                        else actions.volume(direction.ifBlank { "up" })
+                    )
+                }
                 "wifi_settings", "wifi" -> ToolOutcome(
                     runCatching { actions.tryHandle("open wifi settings") }.getOrNull()
                         ?: "I couldn't open Wi-Fi settings."
@@ -114,6 +135,13 @@ class Tools(
                 "send_sms", "sms", "text" -> ToolOutcome(
                     actions.sendSms(arg("contact", "who", "name", "number"), arg("message", "body", "text"))
                 )
+                "whatsapp" -> {
+                    val out = actions.whatsapp(
+                        arg("contact", "who", "name", "to"),
+                        arg("message", "body", "text", "saying"),
+                    )
+                    out
+                }
                 "open_app", "open" -> ToolOutcome(actions.openApp(arg("app", "name", "value")))
                 "play_music", "play" -> ToolOutcome(actions.play(arg("query", "song", "value")))
                 "remember" -> {

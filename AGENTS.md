@@ -256,3 +256,28 @@ Safe and new in v0.14: `media` (pause / resume / next / previous / stop via medi
 
 Tests: `ToolPolicyTest` (the classification itself), `SafeControlTest` (the gates with Robolectric),
 plus two `ScreensRenderTest` shots of the switch off and on.
+
+## Control mode steps (v0.15)
+
+Access grows in steps; it is never "everything". Nothing here may reach further than the
+step it belongs to.
+
+- **Step 1, safe basics**: flashlight, volume (now with an exact `level` 0-100), open app.
+  These run on their own, with no switch.
+- **Step 2, several tools per message**: `Assistant.respond` now loops. Each tool call's
+  result is added to the next prompt under "Already done for this message", up to
+  `ToolSteps.Max` (4). The loop stops on: plain words, a held-back tool (`handled=false`),
+  a tool that needs the user to tap (`awaitingUser`), the same call twice in a row, or the
+  step limit (then `StepLog.summary()` is read back). A made-up tool name gets one retry.
+  **Each model call needs its own `StreamGate`** - a gate closes for good after it sees a
+  tool call, so reusing one swallows the closing sentence.
+- **WhatsApp is the careful route**: `Actions.whatsapp` opens the chat via `wa.me` with the
+  text filled in, and the user taps Send. It never presses a button inside another app.
+  It is Elevated (`ToolPolicy`), so it is off until Risky controls is on.
+- **`Tools.menu(risky)` hides Elevated tools**, so "is this a real tool" must use
+  `Tools.has(name)`, not the filtered menu - otherwise a switched-off tool looks made up.
+- **`ReplyText.cleanKeepingBlank`** exists so an empty model reply after real work can be
+  replaced by the step summary instead of the "I'm here" placeholder.
+- **Hindi word order** ("papa ko call kar", "mummy ko whatsapp me message kar ki ...") is
+  parsed in `Actions.hindiOrder`, before `CommandParser.commandText`, and only when a real
+  contact matches. `Relations` maps papa/dad/abbu, mummy/mom/maa, bhai, behen, etc.

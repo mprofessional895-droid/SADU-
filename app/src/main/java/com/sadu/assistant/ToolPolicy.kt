@@ -19,7 +19,7 @@ object ToolPolicy {
     /** Tools that act as the user, spend money, or delete something the user asked to keep. */
     val ElevatedTools = setOf(
         "call", "phone", "dial", "ring",
-        "send_sms", "sms", "text", "message",
+        "send_sms", "sms", "text", "message", "whatsapp",
         "install_app", "forget",
     )
 
@@ -50,6 +50,7 @@ object ToolPolicy {
         when (tool.trim().lowercase()) {
             "call", "phone", "dial", "ring" -> "Calling someone"
             "send_sms", "sms", "text", "message" -> "Sending a message"
+            "whatsapp" -> "Messaging someone on WhatsApp"
             "install_app" -> "Installing an app"
             "forget" -> "Forgetting what I know about you"
             "screen", "accessibility" -> "Tapping and typing inside other apps"

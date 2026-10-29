@@ -23,6 +23,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * Everything Sadu can DO on the phone. Two entry points:
@@ -108,6 +109,11 @@ class Actions(
                 return readScreen()
             }
         }
+
+        // Hindi word order ("papa ko call kar", "mummy ko message kar ki ..."). Checked
+        // before commandText, which only accepts English verb-first wording, and only when
+        // a real contact is behind the name - otherwise it is conversation, not an order.
+        if (!chatOnly) hindiOrder(clean)?.let { return it }
 
         // Everything past here actually touches the phone, so only run it when the
         // message reads as a command. Otherwise hand it to the brain as conversation.
@@ -198,6 +204,13 @@ class Actions(
         if (sms != null) {
             val who = sms.groupValues[1].trim()
             if (CommandParser.isRealTarget(who)) return sendSms(who, sms.groupValues[2])
+        }
+
+        // ---- WhatsApp ----
+        whatsappOrder(cmd)?.let { (who, body) ->
+            if (CommandParser.isRealTarget(who)) {
+                return whatsapp(who, body).display
+            }
         }
 
         // ---- call ----
@@ -299,6 +312,17 @@ class Actions(
         }
     } catch (e: Exception) {
         "I couldn't change the volume: ${e.message}"
+    }
+
+    /** Set the media volume to an exact percentage, so "volume 50%" means 50. */
+    fun volumeLevel(percent: Int): String = try {
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val level = ((percent.coerceIn(0, 100) / 100f) * max).roundToInt()
+        am.setStreamVolume(AudioManager.STREAM_MUSIC, level, AudioManager.FLAG_SHOW_UI)
+        if (percent <= 0) "Muted." else "Volume set to $percent%."
+    } catch (e: Exception) {
+        "I couldn't set the volume: ${e.message}"
     }
 
     fun setAlarm(time: String): String {
@@ -404,6 +428,46 @@ class Actions(
         } else "I couldn't open the messages app."
     }
 
+    /**
+     * WhatsApp, the careful way: find the contact, open their chat with the message already
+     * typed, and stop. The user taps Send. Nothing is ever sent behind their back, and no
+     * accessibility trick is used to press a button inside another app.
+     */
+    fun whatsapp(who: String, body: String): ToolOutcome {
+        if (!prefs.riskyControls) return ToolOutcome(ToolPolicy.paused("Messaging someone"))
+        if (body.isBlank()) return ToolOutcome("What should the message to $who say?")
+        val hit = findContact(who.trim())
+            ?: return ToolOutcome(contactMiss(who.trim()))
+        val digits = hit.first.filter { it.isDigit() || it == '+' }.removePrefix("+")
+        if (digits.length < 7) return ToolOutcome("I couldn't read a phone number for ${hit.second}.")
+        val sms = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? android.telephony.TelephonyManager
+        val cc = sms?.networkCountryIso?.uppercase().orEmpty().ifBlank { "IN" }
+        val url = "https://wa.me/" + Uri.encode(cc + digits) + "?text=" + Uri.encode(body)
+        val strong = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            .setPackage("com.whatsapp")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (go(strong)) {
+            return ToolOutcome(
+                display = "I've opened WhatsApp with the message to ${hit.second} ready. " +
+                    "Tap Send.",
+                awaitingUser = true,
+                confirmHint = "Send in WhatsApp",
+            )
+        }
+        val any = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return if (go(any)) {
+            ToolOutcome(
+                display = "WhatsApp isn't installed, so I opened that message in your browser " +
+                    "instead. Finish it there.",
+                awaitingUser = true,
+                confirmHint = "Send",
+            )
+        } else {
+            ToolOutcome("I couldn't open WhatsApp. Check that it is installed.")
+        }
+    }
+
     fun openApp(name: String): String {
         val (handle, label) = resolveApp(name) ?: return "I couldn't find an app called \"$name\"."
         return if (go(handle)) "Opening $label." else "I couldn't open $label."
@@ -477,6 +541,53 @@ class Actions(
 
     // ------------------------------------------------------------ internals
 
+    /**
+     * "papa ko call kar", "mummy ko message kar ki main late hoon", "bhai ko whatsapp karo".
+     * Returns null when the name is not a contact, so a sentence that merely mentions
+     * someone is left to the model as conversation.
+     */
+    private fun hindiOrder(clean: String): String? {
+        val t = clean.lowercase()
+        val call = Regex(
+            "^(.+?)\\s+ko\\s+(?:call|phone|dial|ring)\\s*(?:kar|karo|kardo|kar do|lagao)?\\s*[.!]?$"
+        ).find(t)
+        if (call != null) {
+            val who = call.groupValues[1].trim()
+            if (CommandParser.isRealTarget(who) && findContact(who) != null) return call(who)
+        }
+        val msg = Regex(
+            "^(.+?)\\s+ko\\s+(?:whatsapp|wa|message|msg|text|sms)\\s*(?:me|par|pe|per)?\\s*" +
+                "(?:message|msg|text|sms)?\\s*(?:kar|karo|kardo|kar do|bhej do|bhejo|bhej)" +
+                "\\s*(?:ki|ke|jo|that)\\s+(.+)$"
+        ).find(t)
+        if (msg != null) {
+            val who = msg.groupValues[1].trim()
+            val body = msg.groupValues[2].trim().trim('.', '!')
+            if (CommandParser.isRealTarget(who) && body.isNotBlank() && findContact(who) != null) {
+                return if (t.contains("whatsapp") || Regex("\\bwa\\b").containsMatchIn(t)) {
+                    whatsapp(who, body).display
+                } else {
+                    sendSms(who, body)
+                }
+            }
+        }
+        return null
+    }
+
+    /** "whatsapp mummy that I am late", "message mummy on whatsapp saying ...". */
+    private fun whatsappOrder(cmd: String): Pair<String, String>? {
+        val a = Regex(
+            "^whatsapp\\s+(.+?)\\s+(?:that|saying|ki|ke|:)\\s+(.+)$"
+        ).find(cmd)
+        if (a != null) return a.groupValues[1].trim() to a.groupValues[2].trim()
+        val b = Regex(
+            "^message\\s+(.+?)\\s+(?:on|via)\\s+whatsapp\\s+" +
+                "(?:that|saying|ki|ke|:)?\\s*(.+)$"
+        ).find(cmd)
+        if (b != null) return b.groupValues[1].trim() to b.groupValues[2].trim()
+        return null
+    }
+
     private fun normalize(raw: String): String = raw
         .replace('\u2019', '\'')
         .replace('\u2018', '\'')
@@ -494,24 +605,38 @@ class Actions(
         false
     }
 
+    /**
+     * Finds a contact by the name the user said. "papa" also asks for "dad" / "father", so a
+     * contact saved under any spelling of the same relation is still found; the exact
+     * spelling always wins, so nothing is guessed when a real match exists.
+     */
     private fun findContact(query: String): Pair<String, String>? {
         val q = query.trim()
         if (Regex("^[+0-9 ()\\-]{5,}$").matches(q)) {
             return q.filter { it.isDigit() || it == '+' } to q
         }
+        if (q.isEmpty()) return null
         if (ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
             return null
         }
+        lookupContact(q)?.let { return it }
+        for (variant in Relations.variants(q)) {
+            if (variant.equals(q, ignoreCase = true)) continue
+            lookupContact(variant)?.let { return it }
+        }
+        return null
+    }
+
+    private fun lookupContact(name: String): Pair<String, String>? = try {
         ctx.contentResolver.query(
             Phone.CONTENT_URI,
             arrayOf(Phone.DISPLAY_NAME, Phone.NUMBER),
             "${Phone.DISPLAY_NAME} LIKE ?",
-            arrayOf("%$q%"),
+            arrayOf("%$name%"),
             null
-        )?.use { c ->
-            if (c.moveToFirst()) return c.getString(1) to c.getString(0)
-        }
-        return null
+        )?.use { c -> if (c.moveToFirst()) c.getString(1) to c.getString(0) else null }
+    } catch (_: Throwable) {
+        null
     }
 
     private fun contactMiss(who: String): String =

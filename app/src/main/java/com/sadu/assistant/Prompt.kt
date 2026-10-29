@@ -44,11 +44,14 @@ object Prompt {
         text: String,
         length: ReplyLength = ReplyLength.Default,
         riskyAllowed: Boolean = false,
+        toolResults: List<String> = emptyList(),
+        retry: Boolean = false,
     ): String =
         local(
             system(
                 Mode.Control, facts, languageName, menu,
                 length = length, riskyAllowed = riskyAllowed,
+                toolResults = toolResults, retry = retry,
             ),
             turns,
             text,
@@ -66,10 +69,15 @@ object Prompt {
         webResults: Boolean = false,
         canSearch: Boolean = false,
         riskyAllowed: Boolean = false,
+        toolResults: List<String> = emptyList(),
+        retry: Boolean = false,
     ): String = if (mode == Mode.Chat) {
         ChatPrompt.build(facts, languageName, length, style, extra, webResults, canSearch)
     } else {
-        ControlPrompt.build(facts, menu, languageName, length, riskyAllowed)
+        ControlPrompt.build(
+            facts, menu, languageName, length, riskyAllowed,
+            toolResults = toolResults, retry = retry,
+        )
     }
 
     /** Instructions and conversation, in the model's own format. */
