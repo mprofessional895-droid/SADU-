@@ -183,27 +183,31 @@ class ControlStepsTest {
     }
 
     @Test
-    fun aHindiOrderWithNoMatchingContactIsLeftToTheModel() {
-        // Robolectric has no contacts, so "papa" cannot match anyone. The rules must decline
-        // rather than pretend, and the message must reach the model as conversation.
-        val brain = ScriptedBrain(listOf("Who is Papa? I couldn't find that contact."))
+    fun aHindiOrderAlwaysGetsAStraightAnswer() {
+        // Without contacts, "papa ko call kar" must still answer: asking for the permission
+        // beats sliding silently into conversation, which is what made calling look broken.
+        val brain = ScriptedBrain(listOf("Who is Papa?"))
         val sut = assistant(brain)
         val answer = sut.respond("papa ko call kar")
 
-        assertEquals("the model is asked, not a blind action", 1, brain.calls)
-        assertFalse(answer.contains("Calling"))
+        assertFalse("must not claim it called anyone", answer.contains("Calling Papa"))
+        assertTrue(
+            "it has to say what is missing: contacts, or the name",
+            answer.contains("contacts") || answer.contains("couldn't find") ||
+                answer.contains("held back")
+        )
         assertTrue("no phone action was recorded", sut.lastSteps().isEmpty())
     }
 
     @Test
-    fun aHindiMessageWithNoMatchingContactIsNotSent() {
-        val brain = ScriptedBrain(listOf("I couldn't find Mummy in your contacts."))
+    fun aHindiMessageIsNeverSentSilently() {
+        val brain = ScriptedBrain(listOf("I couldn't find Mummy."))
         val sut = assistant(brain)
         val answer = sut.respond("mummy ko whatsapp me message kar ki main late aa raha hoon")
 
-        assertEquals(1, brain.calls)
         assertFalse(answer.contains("Message sent"))
         assertFalse(answer.contains("Tap Send"))
+        assertTrue(answer.contains("contacts") || answer.contains("couldn't find") || answer.contains("held back"))
     }
 
     @Test
