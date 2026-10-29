@@ -68,7 +68,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         get() = if (prefs.localEngine == LocalEngine.Llama) llamaEngine else mediaPipeEngine
 
     private val actions = Actions(ctx, memory, prefs) { SaduAccessibilityService.instance }
-    private val tools = Tools(actions, memory) { prefs.mode }
+    private val tools = Tools(actions, memory, { prefs.mode }, { prefs.riskyControls })
     // Starts on whichever engine the settings point at, so a cold start and a switch agree.
     private val localBrain = SwitchableBrain(brainFor(engine))
     private val cloudBrain = CloudBrain { cloudConfig() }
@@ -104,6 +104,8 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         { prefs.chatInstructions },
         { prefs.internetEnabled && prefs.webAnswers },
         { prefs.internetEnabled },
+        WebSearch.live(),
+        { prefs.riskyControls },
     )
     private val store = ChatHistory(ctx)
 
@@ -187,6 +189,10 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     var speakOn by mutableStateOf(prefs.speakEnabled)
         private set
     var internetOn by mutableStateOf(prefs.internetEnabled)
+        private set
+
+    /** Messages, calls, app installs, screen taps: off by default, see [ToolPolicy]. */
+    var riskyControls by mutableStateOf(prefs.riskyControls)
         private set
     var wakeOn by mutableStateOf(prefs.wakeWordEnabled)
         private set
@@ -675,6 +681,11 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     fun setInternet(on: Boolean) {
         internetOn = on
         prefs.internetEnabled = on
+    }
+
+    fun changeRiskyControls(on: Boolean) {
+        riskyControls = on
+        prefs.riskyControls = on
     }
 
     fun changeConfirmSms(on: Boolean) {

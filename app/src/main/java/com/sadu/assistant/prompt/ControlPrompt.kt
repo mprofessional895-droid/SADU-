@@ -11,7 +11,7 @@ import com.sadu.assistant.ReplyLength
  */
 object ControlPrompt {
 
-    const val VERSION = "control-1"
+    const val VERSION = "control-2"
 
     private const val PERSONA =
         "You are Sadu, a warm, capable assistant running privately on the user's Android phone. " +
@@ -22,6 +22,9 @@ object ControlPrompt {
         menu: String,
         languageName: String,
         length: ReplyLength = ReplyLength.Default,
+        riskyAllowed: Boolean = false,
+        toolResults: List<String> = emptyList(),
+        retry: Boolean = false,
     ): String {
         val sb = StringBuilder()
         sb.append(PERSONA)
@@ -33,9 +36,15 @@ object ControlPrompt {
         sb.append("plain words. Never use JSON in chat.\n")
         sb.append("2. COMMAND - if the user clearly asks you to DO something on the phone that a tool ")
         sb.append("can do, reply with ONLY a single JSON object and nothing else.\n\n")
+        sb.append("One call at a time:\n")
+        sb.append("- Reply with ONE tool call only. When it has run, you will see its result and can ")
+        sb.append("call the next tool or give the final answer.\n")
+        sb.append("- A request like \"mummy ko WhatsApp me message kar ki main late aa raha hoon\" ")
+        sb.append("needs the whatsapp tool with both contact and message.\n\n")
         sb.append("Your tools:\n")
         sb.append(menu).append("\n\n")
         appendFacts(sb, facts)
+        appendResults(sb, toolResults, retry)
         sb.append("Command examples:\n")
         sb.append("User: text mom that I am on my way\n")
         sb.append("Sadu: {\"tool\":\"send_sms\",\"args\":{\"contact\":\"Mom\"}}\n")
@@ -59,7 +68,15 @@ object ControlPrompt {
         sb.append("\\n or \\t, and never wrap the whole answer in quotation marks.\n")
         sb.append("- Do not use # headings or a wall of bold. At most one short bold word now and then.\n")
         sb.append("- If the message carries web results, answer from them in plain words and say the ")
-        sb.append("answer comes from a web search.\n\n")
+        sb.append("answer comes from a web search.\n")
+        if (!riskyAllowed) {
+            sb.append("- Messages, calls, app installs and tapping or typing inside other apps are ")
+            sb.append("switched off in this app right now, and those tools are not in your list. If ")
+            sb.append("the user asks for one of them, say plainly that this control is off and that ")
+            sb.append("Settings > What Sadu may do > Risky controls turns it on. Never say you did ")
+            sb.append("it, and never promise to.\n")
+        }
+        sb.append("\n")
         return sb.toString()
     }
 
@@ -67,6 +84,21 @@ object ControlPrompt {
         if (languageName.isNotBlank()) {
             sb.append("Always write your reply in ").append(languageName).append(".\n\n")
         }
+    }
+
+    /**
+     * What has already been done for this message. Shown to the model so it can decide the
+     * next step, and never shown to the user - the app says its own summary.
+     */
+    private fun appendResults(sb: StringBuilder, results: List<String>, retry: Boolean) {
+        if (retry) {
+            sb.append("Your last reply was not a tool from the list above. Reply again with ")
+            sb.append("either one tool call from the list, or plain words.\n\n")
+        }
+        if (results.isEmpty()) return
+        sb.append("Already done for this message:\n")
+        for (line in results) sb.append("- ").append(line).append('\n')
+        sb.append("\n")
     }
 
     private fun appendFacts(sb: StringBuilder, facts: String) {

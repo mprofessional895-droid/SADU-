@@ -38,8 +38,15 @@ class Assistant(
     private val internet: () -> Boolean = { true },
     /** How a page is fetched. Swapped in tests so no connection is needed. */
     private val fetch: (String) -> String = WebSearch.live(),
+    /** Whether the controls that act as the user are switched on (Settings). */
+    private val riskyAllowed: () -> Boolean = { false },
 ) {
     private val history = ArrayList<Turn>()
+
+    /** The tools the last answer ran, in order. Empty when a rule or plain chat answered. */
+    private val steps = StepLog()
+
+    fun lastSteps(): List<StepRecord> = steps.all()
 
     fun resetHistory() {
         history.clear()
@@ -86,6 +93,7 @@ class Assistant(
         lastReplyTruncated = false
         lastActionClaim = false
         lastWebSources = emptyList()
+        steps.clear()
         stage = null
         val current = mode()
 
@@ -119,11 +127,8 @@ class Assistant(
 
         if (!brain.isReady) return notReady(current)
 
-        val gate = if (current == Mode.Control) StreamGate(onDelta) else null
-        val raw = try {
-            brain.generateStream(requestFor(text, current)) { delta ->
-                if (gate == null) onDelta(delta) else gate.feed(delta)
-            }
+        var raw = try {
+            ask(text, current, emptyList(), retry = false, onDelta)
         } catch (e: Throwable) {
             return "Sorry, my brain hit an error: ${e.message}"
         }
@@ -137,25 +142,98 @@ class Assistant(
             toolQuery(raw, "web_search")
         }
         if (asked != null && internet() && webAnswers()) {
-            gate?.finish()
             webAnswer(text, asked, current, onDelta)?.let { return it }
         }
 
-        parseToolCall(raw)?.let { (name, args) ->
+        // One message can need several actions: find the contact, open the chat, write the
+        // message. Each step's result goes back to the model so it can decide the next one.
+        // Chat mode never gets here with a phone tool, because ModePolicy refuses at run time.
+        var retried = false
+        var lastCall: Pair<String, Map<String, String>>? = null
+        while (true) {
+            val call = parseToolCall(raw) ?: break
+            val (name, args) = call
+
+            // The same call twice in a row means the model has nothing new to do.
+            if (call == lastCall) break
+            lastCall = call
+
+            // A made-up tool name is worth one more try with the menu in front of the model.
+            if (!tools.has(name) && !retried) {
+                retried = true
+                raw = ask(text, current, steps.all(), retry = true, onDelta)
+                continue
+            }
+
             val outcome = tools.run(name, args)
-            if (outcome.handled) {
+            steps.add(name, outcome.display)
+
+            // Held back or unknown: that sentence is the answer, so say it and stop.
+            if (!outcome.handled) {
+                stage = null
+                answeredWithModel = true
                 remember(text, outcome.display)
                 return outcome.display
             }
+
+            // Something was opened and the user has to finish it by hand: say so and stop.
+            if (outcome.awaitingUser) {
+                stage = null
+                answeredWithModel = true
+                remember(text, outcome.display)
+                return outcome.display
+            }
+
+            if (steps.size >= ToolSteps.Max) break
+            // The thinking line says which step is running, so a long chain is not a blank wait.
+            stage = "Step ${steps.size + 1}: ${steps.all().last().tool.replace('_', ' ')}"
+            raw = ask(text, current, steps.all(), retry = false, onDelta)
         }
 
-        gate?.finish()
-        val reply = cleanChat(raw)
+        // Out of steps with the model still asking for tools: read back what happened.
+        stage = null
+        if (parseToolCall(raw) != null) {
+            val summary = steps.summary()
+            answeredWithModel = true
+            remember(text, summary)
+            return summary
+        }
+
+        val cleaned = ReplyText.cleanKeepingBlank(raw)
+        val reply = if (cleaned.isBlank() && steps.size > 0) {
+            // The model ran out of words after acting: say what actually happened.
+            steps.summary()
+        } else {
+            ReplyText.clean(raw)
+        }
         lastActionClaim = current == Mode.Chat && ChatPolicy.claimsPhoneAction(reply)
         answeredWithModel = true
         lastReplyTruncated = brain.lastReplyTruncated
         remember(text, reply)
         return reply
+    }
+
+    /**
+     * One model call, with whatever has already been done added to the instructions.
+     *
+     * Each call gets its own [StreamGate]: a gate closes for good once it has seen a tool
+     * call, so reusing one would swallow the closing sentence of the next step.
+     */
+    private fun ask(
+        text: String,
+        current: Mode,
+        done: List<StepRecord>,
+        retry: Boolean,
+        onDelta: (String) -> Unit,
+    ): String {
+        val gate = if (current == Mode.Control) StreamGate(onDelta) else null
+        return try {
+            brain.generateStream(requestFor(text, current, toolResults = done, retry = retry)) { delta ->
+                if (gate == null) onDelta(delta) else gate.feed(delta)
+            }
+        } finally {
+            gate?.finish()
+        }
     }
 
     /**
@@ -249,8 +327,14 @@ class Assistant(
         }
     }
 
-    private fun requestFor(text: String, current: Mode, webResults: Boolean = false): LlmRequest {
-        val menu = if (current == Mode.Control) tools.menu() else ""
+    private fun requestFor(
+        text: String,
+        current: Mode,
+        webResults: Boolean = false,
+        toolResults: List<StepRecord> = emptyList(),
+        retry: Boolean = false,
+    ): LlmRequest {
+        val menu = if (current == Mode.Control) tools.menu(riskyAllowed()) else ""
         val instructions = Prompt.system(
             mode = current,
             facts = memory.asContext(),
@@ -261,6 +345,9 @@ class Assistant(
             extra = extraInstructions(),
             webResults = webResults,
             canSearch = current == Mode.Chat && internet() && webAnswers(),
+            riskyAllowed = riskyAllowed(),
+            toolResults = toolResults.map { Steps.resultLine(it) },
+            retry = retry,
         )
         val fixed = ContextBudget.estimate(instructions) + ContextBudget.estimate(text)
         val window = ContextBudget.clamp(contextTokens())

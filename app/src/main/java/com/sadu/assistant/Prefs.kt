@@ -23,6 +23,15 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("wake", false)
         set(v) = p.edit().putBoolean("wake", v).apply()
 
+    /**
+     * The controls that act as the user: sending messages, calling, installing apps, tapping
+     * and typing inside other apps, forgetting what Sadu knows. Off by default - until it is
+     * on, Sadu may read, navigate and do reversible things, and nothing else.
+     */
+    var riskyControls: Boolean
+        get() = p.getBoolean("risky_controls", false)
+        set(v) = p.edit().putBoolean("risky_controls", v).apply()
+
     /** Ask before actually sending an SMS. Safer default. */
     var confirmSms: Boolean
         get() = p.getBoolean("confirm_sms", true)

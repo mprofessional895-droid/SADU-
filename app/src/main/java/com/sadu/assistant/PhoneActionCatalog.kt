@@ -86,6 +86,13 @@ object PhoneActionCatalog {
             example = "Mute the volume",
         ),
         PhoneAction(
+            id = "media",
+            title = "Music playback",
+            detail = "Pause, resume, skip, and stop what is playing.",
+            group = GROUP_DEVICE,
+            example = "Pause the music",
+        ),
+        PhoneAction(
             id = "alarms",
             title = "Alarms",
             detail = "Hand a time to the clock app.",

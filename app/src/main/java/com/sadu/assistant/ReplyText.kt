@@ -11,7 +11,13 @@ package com.sadu.assistant
  */
 object ReplyText {
 
-    fun clean(raw: String): String {
+    /** Same clean-up, but honest about an empty reply: it stays empty instead of a shrug. */
+    fun cleanKeepingBlank(raw: String): String =
+        clean(raw, placeholder = "")
+
+    fun clean(raw: String): String = clean(raw, placeholder = "I'm here. What would you like to do?")
+
+    private fun clean(raw: String, placeholder: String): String {
         var s = raw
 
         // Prompt control tokens
@@ -51,6 +57,6 @@ object ReplyText {
         s = s.replace(Regex("\n[ \t]*\n[ \t]*\n+"), "\n\n")
         s = s.lines().joinToString("\n") { it.trimEnd() }.trim()
 
-        return s.ifBlank { "I'm here. What would you like to do?" }
+        return s.ifBlank { placeholder }
     }
 }

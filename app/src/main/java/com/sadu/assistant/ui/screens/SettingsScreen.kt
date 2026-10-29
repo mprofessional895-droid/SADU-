@@ -120,6 +120,7 @@ data class SettingsUiState(
     val cloudTest: String? = null,
     val cloudProblem: String? = null,
     val webAnswers: Boolean = true,
+    val riskyControls: Boolean = false,
 )
 
 @Composable
@@ -175,6 +176,7 @@ fun SettingsScreen(vm: SaduViewModel) {
             cloudTest = vm.cloudTest,
             cloudProblem = vm.cloudProblem,
             webAnswers = vm.webAnswers,
+            riskyControls = vm.riskyControls,
         ),
         onMode = { vm.chooseMode(it) },
         onImportModel = { picker.launch(arrayOf("*/*")) },
@@ -204,6 +206,7 @@ fun SettingsScreen(vm: SaduViewModel) {
         onClearCloudKey = { vm.clearCloudApiKey() },
         onTestCloud = { vm.testCloud() },
         onWebAnswers = { vm.chooseWebAnswers(it) },
+        onRiskyControls = { vm.changeRiskyControls(it) },
     )
 }
 
@@ -235,6 +238,7 @@ fun SettingsContent(
     onClearCloudKey: () -> Unit = {},
     onTestCloud: () -> Unit = {},
     onWebAnswers: (Boolean) -> Unit = {},
+    onRiskyControls: (Boolean) -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -271,8 +275,31 @@ fun SettingsContent(
                     Spacer(Modifier.height(10.dp))
                     Text(
                         text = "Chat keeps the assistant's full attention on talking with you. " +
-                            "Control gives it your phone as well, so it can send messages, call, " +
-                            "set alarms, open apps and work the screen.",
+                            "Control gives it your phone as well, so it can read the screen, " +
+                            "navigate, set alarms, open apps and change the volume.",
+                        color = Ink.TextDim,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    HairlineDivider()
+                    ToggleRow(
+                        title = "Risky controls",
+                        subtitle = "Messages, calls, app installs, screen taps",
+                        checked = state.riskyControls,
+                        onCheckedChange = onRiskyControls,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = if (state.riskyControls) {
+                            "On: Sadu may send messages, place calls, install apps, and tap or " +
+                                "type inside other apps. The switches under Messages and calls " +
+                                "still apply."
+                        } else {
+                            "Off: Sadu reads, navigates and does reversible things - alarms, " +
+                                "volume, flashlight, music, opening apps - but it will not act as " +
+                                "you. Sending a message, calling, installing an app, tapping or " +
+                                "typing inside another app, and forgetting your details all wait " +
+                                "for you to turn this on."
+                        },
                         color = Ink.TextDim,
                         style = MaterialTheme.typography.bodySmall,
                     )

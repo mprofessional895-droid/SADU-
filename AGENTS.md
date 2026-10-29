@@ -228,3 +228,56 @@ line, `SEARCH: <query>`, which `Assistant.searchRequest` picks up and answers fr
 - `ui/components/ThoughtField.kt` - "Thought Stream": the faint particle field behind a chat,
   which gathers toward a drifting point while thinking and streams upward while answering.
 - The assistant's turn in a conversation has no bubble: full-width text with a hairline rule.
+
+## Safe control (v0.14)
+
+Control mode now has two gates, not one:
+
+1. `ModePolicy` (`Mode.kt`) - "may this mode touch the phone at all". Chat mode still gets the
+   network and nothing else.
+2. `ToolPolicy` (`ToolPolicy.kt`) - "is this particular control switched on". `Prefs.riskyControls`,
+   off by default.
+
+Elevated (needs the switch): `call`, `send_sms`, `install_app`, `forget`, and the `screen`
+actions `tap` / `type`. Anything unnamed, or any unknown screen action, is elevated - the
+allow-list is `ToolPolicy.SafeScreenActions`, so a new action is closed until it is added.
+
+The gate is enforced at every entry point, because typed commands reach `Actions` before the
+model is asked: `Tools.run`, `Actions.call`, `Actions.sendSms`, `Actions.installApp`,
+`Actions.accessibilityAction`, and the `forget everything` rule. Turning the switch on is
+necessary but not sufficient for messages - `confirmSms` / `directCall` still apply on top.
+
+`Tools.menu(risky)` leaves the switched-off tools out of what the model is shown, so a small
+model is not tempted to try one. `ControlPrompt` (`control-2`) also states plainly that those
+controls are off. The prompt is a courtesy; `ToolPolicy` is the enforcement.
+
+Safe and new in v0.14: `media` (pause / resume / next / previous / stop via media keys).
+`CommandParser.ACTION_WORDS` needs any new command verb, or the rule layer never sees it.
+
+Tests: `ToolPolicyTest` (the classification itself), `SafeControlTest` (the gates with Robolectric),
+plus two `ScreensRenderTest` shots of the switch off and on.
+
+## Control mode steps (v0.15)
+
+Access grows in steps; it is never "everything". Nothing here may reach further than the
+step it belongs to.
+
+- **Step 1, safe basics**: flashlight, volume (now with an exact `level` 0-100), open app.
+  These run on their own, with no switch.
+- **Step 2, several tools per message**: `Assistant.respond` now loops. Each tool call's
+  result is added to the next prompt under "Already done for this message", up to
+  `ToolSteps.Max` (4). The loop stops on: plain words, a held-back tool (`handled=false`),
+  a tool that needs the user to tap (`awaitingUser`), the same call twice in a row, or the
+  step limit (then `StepLog.summary()` is read back). A made-up tool name gets one retry.
+  **Each model call needs its own `StreamGate`** - a gate closes for good after it sees a
+  tool call, so reusing one swallows the closing sentence.
+- **WhatsApp is the careful route**: `Actions.whatsapp` opens the chat via `wa.me` with the
+  text filled in, and the user taps Send. It never presses a button inside another app.
+  It is Elevated (`ToolPolicy`), so it is off until Risky controls is on.
+- **`Tools.menu(risky)` hides Elevated tools**, so "is this a real tool" must use
+  `Tools.has(name)`, not the filtered menu - otherwise a switched-off tool looks made up.
+- **`ReplyText.cleanKeepingBlank`** exists so an empty model reply after real work can be
+  replaced by the step summary instead of the "I'm here" placeholder.
+- **Hindi word order** ("papa ko call kar", "mummy ko whatsapp me message kar ki ...") is
+  parsed in `Actions.hindiOrder`, before `CommandParser.commandText`, and only when a real
+  contact matches. `Relations` maps papa/dad/abbu, mummy/mom/maa, bhai, behen, etc.

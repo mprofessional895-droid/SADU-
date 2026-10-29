@@ -389,6 +389,21 @@ class ScreensRenderTest {
         shoot("settings-360x640")
     }
 
+    /** Safe control: the new switch, off and on, on the Control-mode settings page. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
+    fun settingsSafeControlOff() {
+        show { settingsContent(mode = Mode.Control, risky = false) }
+        shoot("settings-safe-control-off-360x640")
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
+    fun settingsSafeControlOn() {
+        show { settingsContent(mode = Mode.Control, risky = true) }
+        shoot("settings-safe-control-on-360x640")
+    }
+
     @Test
     @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
     fun chatBrainCard() {
@@ -473,10 +488,13 @@ class ScreensRenderTest {
     }
 
     @Composable
-    private fun settingsContent() {
+    private fun settingsContent(mode: Mode = Mode.Default, risky: Boolean = false) {
         SettingsContent(
                 onMode = {},
+                onRiskyControls = {},
                 state = SettingsUiState(
+                    mode = mode,
+                    riskyControls = risky,
                     modelReady = true,
                     modelPresent = true,
                     modelNote = READY_NOTE,
