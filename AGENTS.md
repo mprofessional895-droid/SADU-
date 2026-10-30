@@ -343,3 +343,17 @@ action belongs in that set, and `MessagePhrasingTest` pins the phrasings.
 
 Two other lessons: `notReady()` must name the real reason (cloud on but not set up vs no
 brain at all), and an empty contact list must not be reported as "no such contact".
+
+## Can the cloud model control the phone? (checked v0.18.2)
+
+Verified against a stub provider over real HTTP, not a fake Brain:
+
+- **Works**: a model that writes the call as JSON in its *content* - `{"tool":"remember",...}`
+  - runs the tool; `StepRecord` and the side effect both prove it. This is what the tool
+  menu in the prompt asks for, so hosted models that follow it do control the phone.
+- **Does not work**: a provider's native function calling. `CloudReply.delta` reads only
+  `delta.content` and `CloudReply.text` only `message.content`, so OpenAI's
+  `tool_calls`, Anthropic's `tool_use` blocks and Gemini's `functionCall` parts are
+  dropped - the stream comes back empty and the user sees "empty reply".
+  `CloudCanControlLiveTest.nativeToolCallsAreDroppedToday` pins this; flip it when
+  CloudReply starts flattening function calls into the text.
