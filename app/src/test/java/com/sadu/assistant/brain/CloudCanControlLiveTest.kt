@@ -34,7 +34,11 @@ class CloudCanControlLiveTest {
     private val blank = "\n\n"
 
     /** A provider that answers the first request with [first], then with [then]. */
-    private fun start(first: String, then: String): CloudConfig {
+    private fun start(
+        first: String,
+        then: String,
+        provider: CloudProvider = CloudProvider.Compatible,
+    ): CloudConfig {
         val socket = ServerSocket(0, 4, InetAddress.getByName("127.0.0.1"))
         stub = socket
         Thread {
@@ -63,7 +67,7 @@ class CloudCanControlLiveTest {
             }
         }.apply { isDaemon = true }.start()
         return CloudConfig(
-            provider = CloudProvider.Compatible,
+            provider = provider,
             baseUrl = "http://127.0.0.1:" + socket.localPort + "/v1",
             model = "stub",
             apiKey = "sk-stub",
@@ -87,14 +91,26 @@ class CloudCanControlLiveTest {
             q + "content" + q + ":" + q + text + q + "}}]}" + blank
 
     /** Exactly how OpenAI-compatible providers stream a function call. */
-    private fun sseToolCall(name: String, argsJson: String): String {
-        val fn = "{" + q + "name" + q + ":" + q + name + q + "," +
-            q + "arguments" + q + ":" + q + esc(argsJson) + q + "}"
+    private fun toolCallChunk(argsJson: String): String {
+        val fn = "{" + q + "arguments" + q + ":" + q + esc(argsJson) + q + "}"
         val call = "{" + q + "index" + q + ":0," + q + "id" + q + ":" + q + "call_1" + q + "," +
             q + "type" + q + ":" + q + "function" + q + "," + q + "function" + q + ":" + fn + "}"
         val delta = "{" + q + "tool_calls" + q + ":[" + call + "]}"
         return "data: " + "{" + q + "choices" + q + ":[" + "{" + q + "delta" + q + ":" + delta +
             "}]}" + blank
+    }
+
+    /** Exactly how OpenAI-compatible providers stream a function call. */
+    private fun sseToolCall(name: String, argsJson: String, split: Boolean = false): String {
+        val nameFn = "{" + q + "name" + q + ":" + q + name + q + "," + q + "arguments" + q + ":" + q + q + "}"
+        val head = "data: " + "{" + q + "choices" + q + ":[" + "{" + q + "delta" + q + ":{" +
+            q + "tool_calls" + q + ":[{" + q + "index" + q + ":0," + q + "id" + q + ":" + q +
+            "call_1" + q + "," + q + "type" + q + ":" + q + "function" + q + "," +
+            q + "function" + q + ":" + nameFn + "}]}}]}" + blank
+        if (!split) return head + toolCallChunk(argsJson)
+        // Arguments arrive a few characters at a time, as every real provider does.
+        val half = argsJson.length / 2
+        return head + toolCallChunk(argsJson.substring(0, half)) + toolCallChunk(argsJson.substring(half))
     }
 
     private fun assistant(cfg: CloudConfig): Pair<Assistant, Memory> {
@@ -146,26 +162,69 @@ class CloudCanControlLiveTest {
         assertEquals(listOf("the sky is green"), memory.facts())
     }
 
-    /**
-     * The question that matters: does a provider's streamed function call reach the
-     * parser at all? Prints the text the stream produced, so the answer is evidence.
-     */
+    /** OpenAI streaming function calling: the tool must actually run. */
     @Test
-    fun nativeToolCallsAreDroppedToday() {
+    fun aStreamedOpenAiToolCallRunsTheTool() {
+        val args = "{\"fact\":\"the sky is blue\"}"
         val cfg = start(
-            sseToolCall("remember", "{\"fact\":\"the sky is blue\"}"),
+            sseToolCall("remember", args, split = true),
             sseContent("Saved that."),
         )
-        val req = LlmRequest("system", emptyList(), "do the thing", Mode.Control)
-        val outcome = runCatching { CloudBrain { cfg }.generateStream(req) { } }
-        println("STREAM OUTCOME = ${outcome.getOrNull()} / ${outcome.exceptionOrNull()}")
+        val (a, memory) = assistant(cfg)
 
-        // The known gap: CloudReply.delta reads only "content", so a provider's
-        // "tool_calls" (and the Anthropic / Gemini equivalents) never reach ToolJson.
-        // When CloudReply flattens function calls into the stream, this flips to a value.
-        assertTrue(
-            "native tool calls now reach the parser - flip this assertion",
-            outcome.getOrNull().isNullOrEmpty(),
-        )
+        val reply = a.respond("kya haal hai bhai")
+
+        println("OPENAI STREAM -> $reply memory=${memory.facts()} steps=${a.lastSteps()}")
+        assertEquals(listOf("the sky is blue"), memory.facts())
+        assertEquals("remember", a.lastSteps().firstOrNull()?.tool)
+    }
+
+    /** A provider that ignores "stream" and answers with tool_calls in one body. */
+    @Test
+    fun aNonStreamedOpenAiToolCallRunsTheTool() {
+        val whole = """{"choices":[{"message":{"content":null,"tool_calls":[
+            {"id":"c1","type":"function","function":{"name":"remember",
+             "arguments":"{\"fact\":\"the sky is grey\"}"}}]}}]}"""
+        // A provider that ignores "stream" answers the same way twice.
+        val cfg = start(whole, whole)
+        val (a, memory) = assistant(cfg)
+
+        val reply = a.respond("kya haal hai bhai")
+
+        println("OPENAI WHOLE -> $reply memory=${memory.facts()}")
+        assertEquals(listOf("the sky is grey"), memory.facts())
+    }
+
+    /** Anthropic streaming: content_block_start names the tool, input_json_delta fills it. */
+    @Test
+    fun aStreamedAnthropicToolUseRunsTheTool() {
+        val start = "data: " + """{"type":"content_block_start","index":0,"content_block":""" +
+            """{"type":"tool_use","id":"toolu_1","name":"remember","input":{}}}""" + blank
+        val one = "data: " + """{"type":"content_block_delta","index":0,"delta":""" +
+            """{"type":"input_json_delta","partial_json":"{\"fact\":\"the sky is pink\"}"}}""" + blank
+        val two = "data: " + """{"type":"content_block_delta","index":0,"delta":""" +
+            """{"type":"text_delta","text":"Saved that."}}""" + blank
+        val cfg = start(start + one, two, provider = CloudProvider.Anthropic)
+        val (a, memory) = assistant(cfg)
+
+        val reply = a.respond("kya haal hai bhai")
+
+        println("ANTHROPIC STREAM -> $reply memory=${memory.facts()} steps=${a.lastSteps()}")
+        assertEquals(listOf("the sky is pink"), memory.facts())
+    }
+
+    /** Gemini streaming: the whole call arrives as a functionCall part. */
+    @Test
+    fun aStreamedGeminiFunctionCallRunsTheTool() {
+        val call = "data: " + """{"candidates":[{"content":{"parts":[""" +
+            """{"functionCall":{"name":"remember","args":{"fact":"the sky is orange"}}}]}}]}""" + blank
+        val text = "data: " + """{"candidates":[{"content":{"parts":[{"text":"Saved that."}]}}]}""" + blank
+        val cfg = start(call, text, provider = CloudProvider.Gemini)
+        val (a, memory) = assistant(cfg)
+
+        val reply = a.respond("kya haal hai bhai")
+
+        println("GEMINI STREAM -> $reply memory=${memory.facts()} steps=${a.lastSteps()}")
+        assertEquals(listOf("the sky is orange"), memory.facts())
     }
 }

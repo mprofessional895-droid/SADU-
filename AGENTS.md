@@ -344,16 +344,21 @@ action belongs in that set, and `MessagePhrasingTest` pins the phrasings.
 Two other lessons: `notReady()` must name the real reason (cloud on but not set up vs no
 brain at all), and an empty contact list must not be reported as "no such contact".
 
-## Can the cloud model control the phone? (checked v0.18.2)
+## Cloud tool calling (v0.19)
 
-Verified against a stub provider over real HTTP, not a fake Brain:
+`CloudReply` turns every provider's own function call into the one shape the app speaks,
+`{"tool":name,"args":{...}}`, so nothing downstream knows the difference:
 
-- **Works**: a model that writes the call as JSON in its *content* - `{"tool":"remember",...}`
-  - runs the tool; `StepRecord` and the side effect both prove it. This is what the tool
-  menu in the prompt asks for, so hosted models that follow it do control the phone.
-- **Does not work**: a provider's native function calling. `CloudReply.delta` reads only
-  `delta.content` and `CloudReply.text` only `message.content`, so OpenAI's
-  `tool_calls`, Anthropic's `tool_use` blocks and Gemini's `functionCall` parts are
-  dropped - the stream comes back empty and the user sees "empty reply".
-  `CloudCanControlLiveTest.nativeToolCallsAreDroppedToday` pins this; flip it when
-  CloudReply starts flattening function calls into the text.
+- **OpenAI-compatible**: `message.tool_calls` when whole; `choices[0].delta.tool_calls`
+  when streamed, where the name arrives once and `arguments` in slices - `Call.merge`
+  joins them by `index`.
+- **Anthropic**: `content_block_start` with `content_block.type == "tool_use"` names the
+  tool, `content_block_delta` / `input_json_delta` / `partial_json` fills the arguments;
+  whole replies carry `content[] {type:"tool_use", input:{...}}`.
+- **Gemini**: `candidates[].content.parts[].functionCall{name,args}` in both modes.
+
+Rules that keep it safe: text wins over a call when the model said something too; a
+JSON `null` content reads as "said nothing" (optString would have produced the word
+"null"); only the first call of a reply is used, because the loop runs one tool per step.
+`CloudToolCallsTest` pins each shape and `CloudCanControlLiveTest` runs the whole loop
+against a stub provider over real HTTP for all three formats.
