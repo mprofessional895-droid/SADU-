@@ -44,6 +44,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.Icon
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -87,6 +88,13 @@ import com.sadu.assistant.ui.rememberReducedMotion
 
 @Composable
 fun ConversationsScreen(vm: SaduViewModel) {
+    if (vm.nameChoices.isNotEmpty()) {
+        NameChooser(
+            names = vm.nameChoices,
+            onPick = { vm.chooseName(it) },
+            onDismiss = { vm.dismissChoices() },
+        )
+    }
     val open = vm.openChat
     if (open == null) {
         ConversationList(
@@ -670,4 +678,52 @@ private fun PermissionAsk(permission: String, onResult: () -> Unit, onSkip: () -
         GhostButton("Allow", { launcher.launch(permission) })
         GhostButton("Not now", onSkip)
     }
+}
+
+/**
+ * The names Sadu guessed, as a chooser.
+ *
+ * A wrong name is usually a typo or a misheard word, and a list is faster to read than a
+ * sentence - but it is only ever a question. Nothing happens until a name is tapped.
+ */
+@Composable
+private fun NameChooser(names: List<String>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Which one?",
+                color = Ink.Text,
+                style = MaterialTheme.typography.titleMedium,
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "That name isn't in your contacts. Did you mean one of these?",
+                    color = Ink.TextDim,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(Modifier.height(10.dp))
+                names.forEach { name ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onPick(name) }
+                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = name,
+                            color = Ink.Text,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { GhostButton("Not now", onDismiss) },
+    )
 }

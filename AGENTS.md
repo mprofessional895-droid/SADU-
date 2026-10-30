@@ -312,3 +312,23 @@ app's settings page instead of doing nothing.
 - **Close names are suggested, never acted on.** `Suggest` (pure Kotlin, Levenshtein +
   prefix/contains) offers up to 3 names. `Actions.pick` holds the pending call/message for
   exactly one turn; "yes" / "1..3" / the name itself finishes it, anything else drops it.
+
+## Cloud in Control mode, and the name chooser (v0.18)
+
+- `BrainRouter` is mode-agnostic: it uses the cloud whenever `cloudWanted()` is true, in Chat
+  and Control alike. The tool menu comes from `Prompt.system(mode = Control)`, so the cloud
+  model sees exactly the same tools. `CloudControlTest` locks this down (cloud gets the menu,
+  a cloud tool call actually runs, local answers when the cloud is off or not ready, and Chat
+  mode still gets no tools).
+- `ToolJson` reads a tool call in every shape a hosted model uses: bare JSON, fenced JSON,
+  `{"name":..., "arguments":{...}}`, `arguments` as a JSON *string*, and a nested `function`
+  object. Prose, an unclosed object and braces inside strings are all handled.
+- `Actions.onChoices` hands the guessed names to the UI, which shows `NameChooser` (an
+  AlertDialog) over the chat. `chooseName` / `clearChoices` finish or drop the pending pick.
+
+## When the chooser appears (v0.18.1)
+
+A single close name is answered in words ("Did you mean Papa? Say yes") and does **not**
+open the chooser - one button for one obvious guess is a speed bump. `Actions.contactMiss`
+opens it only when two or more names are close, which is the case where a popup is faster
+than reading a sentence.

@@ -43,6 +43,9 @@ class Actions(
      */
     var onNeedPermission: ((String) -> Unit)? = null
 
+    /** The names a suggestion offered, so the screen can show them as a chooser. */
+    var onChoices: ((List<String>) -> Unit)? = null
+
     /**
      * The query when the message reads as "search about X" / "google X" / "look up X",
      * or null. It only ever sees text that already looks like a command, so ordinary
@@ -763,6 +766,7 @@ class Actions(
             return "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
         }
         pick = Pick(what, body, options)
+        if (options.size > 1) onChoices?.invoke(options.map { it.name })
         return Suggest.question(who, options.map { it.name })
             ?: "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
     }
@@ -796,6 +800,22 @@ class Actions(
         // Anything else: drop the guess rather than surprise the user with it later.
         pick = null
         return null
+    }
+
+    /** A name tapped in the chooser. Returns Sadu's answer, or null when nothing was waiting. */
+    fun chooseName(name: String): String? {
+        val held = pick ?: return null
+        val hit = held.options.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) }
+            ?: return null
+        pick = null
+        onChoices?.invoke(emptyList())
+        return runPick(held, hit)
+    }
+
+    /** The chooser was closed without a choice: forget the guess rather than fire it later. */
+    fun clearChoices() {
+        pick = null
+        onChoices?.invoke(emptyList())
     }
 
     private fun runPick(held: Pick, contact: Contact): String = when (held.what) {
