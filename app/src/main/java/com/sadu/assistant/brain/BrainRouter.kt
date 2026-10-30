@@ -48,6 +48,10 @@ class BrainRouter(
                 lastFallback = reason(e)
             }
         }
+        if (!local.isReady) {
+            val err = lastFallback ?: "Cloud model failed and no on-device model is loaded."
+            throw IOException(err)
+        }
         val reply = local.generateStream(request, onDelta)
         lastUsed = local.name
         lastReplyTruncated = local.lastReplyTruncated

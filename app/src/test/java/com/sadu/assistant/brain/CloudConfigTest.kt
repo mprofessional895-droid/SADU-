@@ -51,10 +51,8 @@ class CloudConfigTest {
     }
 
     @Test
-    fun aServerNameWithoutADomainIsCaught() {
-        val why = config(url = "my-server").problem()
-        assertNotNull(why)
-        assertTrue(why!!, why.contains("server name"))
+    fun aServerNameWithoutADomainIsAllowed() {
+        assertNull(config(url = "my-server").problem())
         assertNotNull(config(url = "http://my server/v1").problem())
     }
 
