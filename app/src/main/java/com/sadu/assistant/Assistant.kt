@@ -42,6 +42,8 @@ class Assistant(
     private val riskyAllowed: () -> Boolean = { false },
     /** Whether to prefer sending control requests directly to the model instead of rule handling. */
     private val preferCloudForActions: () -> Boolean = { false },
+    /** If cloud brain is enabled but has a configuration issue, returns that problem string. */
+    private val cloudProblem: () -> String? = { null },
 ) {
     private val history = ArrayList<Turn>()
 
@@ -370,14 +372,19 @@ class Assistant(
         )
     }
 
-    private fun notReady(current: Mode): String =
-        if (current == Mode.Chat) {
+    private fun notReady(current: Mode): String {
+        val prob = cloudProblem()
+        if (prob != null) {
+            return "The cloud brain is turned on, but it is not ready: $prob. Check your settings under Cloud brain."
+        }
+        return if (current == Mode.Chat) {
             "My AI model isn't loaded yet. Import a model file in Settings, " +
                 "or check your cloud model settings under Cloud brain."
         } else {
             "My AI model isn't ready. Import a model file or check your cloud model settings " +
                 "in Settings, or give me a simple command like \"set an alarm for 7 am\"."
         }
+    }
 
     /** The display name of the chosen reply language, or "" to follow the phone. */
     private fun languageName(): String {
