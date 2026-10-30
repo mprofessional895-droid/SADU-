@@ -104,6 +104,8 @@ fun CloudCard(
     keyProtected: Boolean,
     test: String?,
     problem: String?,
+    preferCloudForActions: Boolean = false,
+    onPreferCloudForActions: (Boolean) -> Unit = {},
     onEnabled: (Boolean) -> Unit,
     onProvider: (CloudProvider) -> Unit,
     onBaseUrl: (String) -> Unit,
@@ -128,6 +130,13 @@ fun CloudCard(
             subtitle = if (enabled) "On - replies come from the cloud model" else "Off",
             checked = enabled,
             onCheckedChange = onEnabled,
+        )
+        Spacer(Modifier.height(12.dp))
+        ToggleRow(
+            title = "Bypass local rules for phone control",
+            subtitle = if (preferCloudForActions) "On - send control messages (calls, messages) directly to Cloud LLM" else "Off - local rule handles commands first",
+            checked = preferCloudForActions,
+            onCheckedChange = onPreferCloudForActions,
         )
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

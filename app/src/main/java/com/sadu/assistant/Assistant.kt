@@ -40,6 +40,8 @@ class Assistant(
     private val fetch: (String) -> String = WebSearch.live(),
     /** Whether the controls that act as the user are switched on (Settings). */
     private val riskyAllowed: () -> Boolean = { false },
+    /** Whether to prefer sending control requests directly to the model instead of rule handling. */
+    private val preferCloudForActions: () -> Boolean = { false },
 ) {
     private val history = ArrayList<Turn>()
 
@@ -120,15 +122,18 @@ class Assistant(
             return line
         }
 
-        try {
-            val ruled =
-                if (current == Mode.Chat) actions.tryHandleChatMode(text)
-                else actions.tryHandle(text)
-            ruled?.let { reply ->
-                remember(text, reply)
-                return reply
+        val bypassRules = current == Mode.Control && preferCloudForActions()
+        if (!bypassRules) {
+            try {
+                val ruled =
+                    if (current == Mode.Chat) actions.tryHandleChatMode(text)
+                    else actions.tryHandle(text)
+                ruled?.let { reply ->
+                    remember(text, reply)
+                    return reply
+                }
+            } catch (_: Throwable) {
             }
-        } catch (_: Throwable) {
         }
 
         if (!brain.isReady) return notReady(current)
