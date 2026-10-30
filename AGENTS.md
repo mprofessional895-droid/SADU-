@@ -325,3 +325,10 @@ app's settings page instead of doing nothing.
   object. Prose, an unclosed object and braces inside strings are all handled.
 - `Actions.onChoices` hands the guessed names to the UI, which shows `NameChooser` (an
   AlertDialog) over the chat. `chooseName` / `clearChoices` finish or drop the pending pick.
+
+## When the chooser appears (v0.18.1)
+
+A single close name is answered in words ("Did you mean Papa? Say yes") and does **not**
+open the chooser - one button for one obvious guess is a speed bump. `Actions.contactMiss`
+opens it only when two or more names are close, which is the case where a popup is faster
+than reading a sentence.

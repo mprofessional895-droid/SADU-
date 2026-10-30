@@ -13,6 +13,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -266,6 +267,66 @@ class CallChainTest {
         val asked = actions.tryHandle("mummy ko whatsapp me messge kar ki late hoon")
         assertTrue("a suggestion or a refusal, never a send", asked == null || !asked.contains("Tap Send"))
         assertTrue("nothing opened", startedIntent() == null)
+    }
+
+    @Test
+    fun oneClearGuessIsAskedInWordsNotWithAPopup() {
+        grantContacts()
+        contacts(mobile("Papa", "+919876543210"))
+        val offered = ArrayList<List<String>>()
+        actions.onChoices = { offered.add(it) }
+
+        val answer = actions.tryHandle("call popa")
+
+        assertTrue(answer!!, answer.contains("Did you mean Papa"))
+        assertTrue("no chooser for a single guess", offered.isEmpty())
+    }
+
+    @Test
+    fun twoCloseNamesOpenTheChooser() {
+        grantContacts()
+        contacts(
+            mobile("Sundeep", "+919876543210"),
+            mobile("Sandip", "+919876543299"),
+        )
+        val offered = ArrayList<List<String>>()
+        actions.onChoices = { offered.add(it) }
+
+        actions.tryHandle("call sandeep")
+
+        assertEquals(1, offered.size)
+        assertEquals(listOf("Sundeep", "Sandip"), offered.first())
+    }
+
+    @Test
+    fun tappingANameInTheChooserFinishesTheCall() {
+        grantContacts()
+        contacts(
+            mobile("Sundeep", "+919876543210"),
+            mobile("Sandip", "+919876543299"),
+        )
+        actions.tryHandle("call sandeep")
+
+        val reply = actions.chooseName("Sandip")
+
+        assertTrue(reply!!, reply.isNotEmpty())
+        assertEquals("tel:+919876543299", startedIntent()?.data.toString())
+        assertNull("the guess is spent", actions.chooseName("Sundeep"))
+    }
+
+    @Test
+    fun closingTheChooserForgetsTheGuess() {
+        grantContacts()
+        contacts(
+            mobile("Sundeep", "+919876543210"),
+            mobile("Sandip", "+919876543299"),
+        )
+        actions.tryHandle("call sandeep")
+
+        actions.clearChoices()
+
+        assertNull("nothing is left to fire", actions.chooseName("Sandip"))
+        assertNull("and nothing opened", startedIntent())
     }
 
     @Test

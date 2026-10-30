@@ -766,7 +766,7 @@ class Actions(
             return "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
         }
         pick = Pick(what, body, options)
-        onChoices?.invoke(options.map { it.name })
+        if (options.size > 1) onChoices?.invoke(options.map { it.name })
         return Suggest.question(who, options.map { it.name })
             ?: "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
     }
