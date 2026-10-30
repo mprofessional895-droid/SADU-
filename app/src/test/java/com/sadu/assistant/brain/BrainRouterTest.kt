@@ -62,6 +62,20 @@ class BrainRouterTest {
     }
 
     @Test
+    fun aCloudThatFailsThrowsExceptionWhenNoLocalModelIsReady() {
+        val brokenCloud = Stub("Cloud (gpt-4o-mini)", fails = true)
+        val unreadyLocal = Stub("On-device Gemma", isReady = false)
+        val router = BrainRouter(unreadyLocal, brokenCloud) { true }
+
+        try {
+            router.generate(request())
+            org.junit.Assert.fail("Should have thrown IOException")
+        } catch (e: java.io.IOException) {
+            assertEquals("no route to host", e.message)
+        }
+    }
+
+    @Test
     fun theReasonIsClearedWhenTheCloudWorksAgain() {
         val sometimes = Stub("Cloud (gpt-4o-mini)")
         val router = BrainRouter(local, sometimes) { true }

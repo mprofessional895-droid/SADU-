@@ -81,9 +81,6 @@ data class CloudConfig(
             .substringBefore('/').substringBefore(':')
         if (host.isBlank()) return "That address has no server name in it"
         if (host.contains(' ') || host.contains('"')) return "That address is not a web address"
-        if (!host.contains('.') && host != "localhost") {
-            return "Check the server name - for example ${provider.defaultBase.removePrefix("https://")}"
-        }
         if (keyless && provider != CloudProvider.Compatible) {
             return "${provider.label} needs an API key"
         }

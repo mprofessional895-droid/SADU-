@@ -373,10 +373,10 @@ class Assistant(
     private fun notReady(current: Mode): String =
         if (current == Mode.Chat) {
             "My AI model isn't loaded yet. Import a model file in Settings, " +
-                "or turn on the cloud brain there."
+                "or check your cloud model settings under Cloud brain."
         } else {
-            "My AI model isn't ready. Import a model file or turn on the cloud brain in " +
-                "Settings, or give me a simple command like \"set an alarm for 7 am\"."
+            "My AI model isn't ready. Import a model file or check your cloud model settings " +
+                "in Settings, or give me a simple command like \"set an alarm for 7 am\"."
         }
 
     /** The display name of the chosen reply language, or "" to follow the phone. */
