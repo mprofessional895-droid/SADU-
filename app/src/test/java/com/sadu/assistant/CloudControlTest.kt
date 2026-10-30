@@ -66,6 +66,7 @@ class CloudControlTest {
             contextTokens = { ContextBudget.Default },
             replyLength = { ReplyLength.Short },
             riskyAllowed = { prefs.riskyControls },
+            preferCloudForActions = { prefs.preferCloudForActions },
         )
     }
 
@@ -122,6 +123,20 @@ class CloudControlTest {
 
         assertEquals("local answer", answer)
         assertEquals("the cloud is not asked at all", 0, cloud.calls)
+    }
+
+    @Test
+    fun preferCloudForActionsBypassesLocalRulesInControlMode() {
+        prefs.preferCloudForActions = true
+        val cloud = FakeBrain("cloud", listOf("cloud handled action"))
+        val local = FakeBrain("local", listOf("local answer"))
+        val router = BrainRouter(local, cloud, cloudWanted = { true })
+
+        // "what time is it" is normally handled by local ruleActions
+        val answer = assistant(router).respond("what time is it")
+
+        assertEquals(1, cloud.calls)
+        assertEquals("cloud handled action", answer)
     }
 
     @Test

@@ -110,6 +110,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         { prefs.internetEnabled },
         WebSearch.live(),
         { prefs.riskyControls },
+        { prefs.preferCloudForActions },
     )
     private val store = ChatHistory(ctx)
 
@@ -262,6 +263,8 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     var cloudKeySet by mutableStateOf(prefs.cloudApiKey.isNotBlank())
         private set
     var cloudKeyProtected by mutableStateOf(prefs.cloudKeyProtected)
+        private set
+    var preferCloudForActions by mutableStateOf(prefs.preferCloudForActions)
         private set
 
     /** Whether "search for ..." is looked up and answered from the results. */
@@ -989,6 +992,11 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         prefs.contextTokens = clamped
         // The window is fixed when the model loads, so reload it in the background.
         if (modelReady) loadModel()
+    }
+
+    fun choosePreferCloudForActions(on: Boolean) {
+        preferCloudForActions = on
+        prefs.preferCloudForActions = on
     }
 
     fun chooseCloudEnabled(on: Boolean) {

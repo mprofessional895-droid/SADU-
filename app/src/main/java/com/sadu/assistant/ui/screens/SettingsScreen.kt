@@ -119,6 +119,7 @@ data class SettingsUiState(
     val cloudKeyProtected: Boolean = false,
     val cloudTest: String? = null,
     val cloudProblem: String? = null,
+    val preferCloudForActions: Boolean = false,
     val webAnswers: Boolean = true,
     val riskyControls: Boolean = false,
 )
@@ -175,6 +176,7 @@ fun SettingsScreen(vm: SaduViewModel) {
             cloudKeyProtected = vm.cloudKeyProtected,
             cloudTest = vm.cloudTest,
             cloudProblem = vm.cloudProblem,
+            preferCloudForActions = vm.preferCloudForActions,
             webAnswers = vm.webAnswers,
             riskyControls = vm.riskyControls,
         ),
@@ -205,6 +207,7 @@ fun SettingsScreen(vm: SaduViewModel) {
         onCloudKey = { vm.editCloudApiKey(it) },
         onClearCloudKey = { vm.clearCloudApiKey() },
         onTestCloud = { vm.testCloud() },
+        onPreferCloudForActions = { vm.choosePreferCloudForActions(it) },
         onWebAnswers = { vm.chooseWebAnswers(it) },
         onRiskyControls = { vm.changeRiskyControls(it) },
     )
@@ -237,6 +240,7 @@ fun SettingsContent(
     onCloudKey: (String) -> Unit = {},
     onClearCloudKey: () -> Unit = {},
     onTestCloud: () -> Unit = {},
+    onPreferCloudForActions: (Boolean) -> Unit = {},
     onWebAnswers: (Boolean) -> Unit = {},
     onRiskyControls: (Boolean) -> Unit = {},
 ) {
@@ -377,6 +381,8 @@ fun SettingsContent(
                     keyProtected = state.cloudKeyProtected,
                     test = state.cloudTest,
                     problem = state.cloudProblem,
+                    preferCloudForActions = state.preferCloudForActions,
+                    onPreferCloudForActions = onPreferCloudForActions,
                     onEnabled = onCloudEnabled,
                     onProvider = onCloudProvider,
                     onBaseUrl = onCloudBaseUrl,

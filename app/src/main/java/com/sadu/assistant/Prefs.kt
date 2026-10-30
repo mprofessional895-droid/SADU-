@@ -109,6 +109,11 @@ class Prefs(ctx: Context) {
         get() = ReplyLength.of(p.getString("reply_length", null))
         set(v) = p.edit().putString("reply_length", v.key).apply()
 
+    /** Whether to bypass built-in rule handling in Control mode so the cloud model handles phone control actions via tools. */
+    var preferCloudForActions: Boolean
+        get() = p.getBoolean("prefer_cloud_for_actions", false)
+        set(v) = p.edit().putBoolean("prefer_cloud_for_actions", v).apply()
+
     /** How Chat mode's answers should read: no personality imposed, or a friendly one. */
     var chatStyle: ChatStyle
         get() = ChatStyle.of(p.getString("chat_style", null))
