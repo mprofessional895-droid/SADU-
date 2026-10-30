@@ -40,6 +40,8 @@ class Assistant(
     private val fetch: (String) -> String = WebSearch.live(),
     /** Whether the controls that act as the user are switched on (Settings). */
     private val riskyAllowed: () -> Boolean = { false },
+    /** Why the cloud brain cannot answer, when it is switched on but not set up. */
+    private val brainProblem: () -> String? = { null },
 ) {
     private val history = ArrayList<Turn>()
 
@@ -365,14 +367,20 @@ class Assistant(
         )
     }
 
-    private fun notReady(current: Mode): String =
-        if (current == Mode.Chat) {
-            "My AI model isn't loaded yet. Import a model file in Settings, " +
-                "or turn on the cloud brain there."
-        } else {
-            "My AI model isn't ready. Import a model file or turn on the cloud brain in " +
-                "Settings, or give me a simple command like \"set an alarm for 7 am\"."
+    private fun notReady(current: Mode): String {
+        // A switched-on cloud brain that cannot answer is a different problem from no brain
+        // at all, and saying which one it is saves a trip through Settings guessing.
+        brainProblem()?.let { why ->
+            return "The cloud brain is on but cannot answer: $why"
         }
+        return if (current == Mode.Chat) {
+            "No brain is loaded: the cloud brain is off and there is no model file. " +
+                "Turn the cloud brain on in Settings, or import a model file."
+        } else {
+            "No brain is loaded, so I can only run simple commands like \"set an alarm for 7 am\". " +
+                "Turn the cloud brain on in Settings, or import a model file."
+        }
+    }
 
     /** The display name of the chosen reply language, or "" to follow the phone. */
     private fun languageName(): String {

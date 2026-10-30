@@ -110,6 +110,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         { prefs.internetEnabled },
         WebSearch.live(),
         { prefs.riskyControls },
+        { if (prefs.cloudEnabled) cloudConfig().problem() else null },
     )
     private val store = ChatHistory(ctx)
 

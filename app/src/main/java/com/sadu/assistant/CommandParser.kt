@@ -14,7 +14,8 @@ object CommandParser {
 
     private val ACTION_WORDS = setOf(
         "set", "turn", "open", "launch", "start", "play", "call", "phone", "dial", "ring",
-        "text", "message", "sms", "send", "write", "install", "download", "search", "google",
+        "text", "message", "sms", "whatsapp", "wa", "msg", "send", "write", "bhej", "bhejo",
+        "install", "download", "search", "google",
         "look", "remember", "note", "forget", "read", "tap", "type", "scroll", "mute", "unmute",
         "volume", "flashlight", "torch", "wake", "create", "increase", "decrease", "raise",
         "lower", "go", "navigate", "press", "home", "back", "recent", "recents", "close",
