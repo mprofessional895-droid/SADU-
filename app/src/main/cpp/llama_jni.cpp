@@ -58,6 +58,9 @@ struct Session {
     std::atomic<bool> cancelled{false};
     std::atomic<bool> loading{false};
     std::mutex busy;
+    // Every token already in the KV cache, prompt and answer together. The next turn decodes
+    // only the part that differs, which is what makes a short turn take a moment, not seconds.
+    std::vector<llama_token> cache;
 };
 
 Session *sessionOf(jlong handle) {
@@ -127,6 +130,7 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeFree(JNIEnv *, jobject, jlong ha
     Session *session = sessionOf(handle);
     if (session == nullptr) return;
     session->cancelled.store(true);
+    session->cache.clear();
     if (session->ctx != nullptr) llama_free(session->ctx);
     if (session->model != nullptr) llama_model_free(session->model);
     delete session;
@@ -214,7 +218,8 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeApplyTemplate(
 JNIEXPORT jstring JNICALL
 Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
         JNIEnv *env, jobject, jlong handle, jstring prompt, jfloat temperature, jint topK, jfloat topP,
-        jfloat minP, jfloat repeatPenalty, jint repeatLastN, jint maxTokens, jobject sink) {
+        jfloat minP, jfloat repeatPenalty, jint repeatLastN, jint maxTokens, jstring grammar,
+        jobject sink) {
     clearError();
 
     Session *session = sessionOf(handle);
@@ -255,12 +260,28 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
         return toJava(env, "");
     }
 
-    // Every turn re-sends the whole prompt, so the old cache would only get in the way.
-    llama_memory_clear(llama_get_memory(session->ctx), true);
+    llama_memory_t memory = llama_get_memory(session->ctx);
+    size_t shared = 0;
+    while (shared < session->cache.size() && shared < tokens.size() &&
+           session->cache[shared] == tokens[shared]) {
+        ++shared;
+    }
+    if (shared == 0) {
+        llama_memory_clear(memory, true);
+    } else if (shared < session->cache.size()) {
+        llama_memory_seq_rm(memory, 0, static_cast<llama_pos>(shared), -1);
+    }
+    session->cache.resize(shared);
 
     llama_sampler_chain_params samplerParams = llama_sampler_chain_default_params();
     samplerParams.no_perf = true;
     llama_sampler *chain = llama_sampler_chain_init(samplerParams);
+    const std::string grammarText = grammar == nullptr ? std::string() : fromJava(env, grammar);
+    if (!grammarText.empty()) {
+        llama_sampler *shaped = llama_sampler_init_grammar(session->vocab, grammarText.c_str(), "root");
+        // A grammar the build cannot parse must never cost the user an answer.
+        if (shaped != nullptr) llama_sampler_chain_add(chain, shaped);
+    }
     if (repeatPenalty > 0.0f) {
         llama_sampler_chain_add(chain, llama_sampler_init_penalties(
                 llama_vocab_n_tokens(session->vocab), repeatLastN, repeatPenalty, 0.0f, 0.0f));
@@ -284,9 +305,19 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
     bool failed = false;
     const int batchSize = static_cast<int>(llama_n_batch(session->ctx));
 
-    for (int at = 0; at < static_cast<int>(tokens.size());) {
-        const int chunk = std::min(batchSize, static_cast<int>(tokens.size()) - at);
-        const int rc = llama_decode(session->ctx, llama_batch_get_one(tokens.data() + at, chunk));
+    // Positions are written out by hand: the tail starts where the shared prefix ends, not at 0.
+    llama_batch chunk = llama_batch_init(batchSize, 0, 1);
+    for (int at = static_cast<int>(shared); at < static_cast<int>(tokens.size());) {
+        const int take = std::min(batchSize, static_cast<int>(tokens.size()) - at);
+        chunk.n_tokens = take;
+        for (int i = 0; i < take; ++i) {
+            chunk.token[i] = tokens[static_cast<size_t>(at + i)];
+            chunk.pos[i] = at + i;
+            chunk.n_seq_id[i] = 1;
+            chunk.seq_id[i][0] = 0;
+            chunk.logits[i] = (at + i == static_cast<int>(tokens.size()) - 1) ? 1 : 0;
+        }
+        const int rc = llama_decode(session->ctx, chunk);
         if (rc != 0) {
             if (rc != 2) {
                 setError("The model could not read the prompt (code " + std::to_string(rc) + ").");
@@ -294,8 +325,11 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
             failed = true;
             break;
         }
-        at += chunk;
+        at += take;
     }
+    llama_batch_free(chunk);
+    if (!failed) session->cache = tokens;
+    if (failed) llama_memory_clear(memory, true);
 
     // Declared outside the loop on purpose: the batch keeps a pointer to it.
     llama_token next = 0;
@@ -323,12 +357,15 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
                 }
             }
         }
+        session->cache.push_back(next);
         // llama_sampler_sample already accepted the token into the chain's history.
         const int rc = llama_decode(session->ctx, llama_batch_get_one(&next, 1));
         if (rc != 0) {
             if (rc != 2) {
                 setError("The model stopped early (code " + std::to_string(rc) + ").");
             }
+            session->cache.clear();
+            llama_memory_clear(memory, true);
             break;
         }
     }

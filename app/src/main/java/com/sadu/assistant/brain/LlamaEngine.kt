@@ -77,20 +77,43 @@ class LlamaEngine(private val ctx: Context) : Engine {
         onDelta: (String) -> Unit,
     ): String = run(prompt, sampling, maxNewTokens, onDelta)
 
+    /**
+     * A turn the model may only answer inside [grammar], ending at the first of [stops]. The engine
+     * is cancelled the moment a stop mark lands, so a runaway tail costs nothing.
+     */
+    fun generateShaped(
+        prompt: String,
+        grammar: String?,
+        stops: List<String>,
+        sampling: Sampling,
+        maxNewTokens: Int,
+        onDelta: ((String) -> Unit)? = null,
+    ): String = run(prompt, sampling, maxNewTokens, onDelta, grammar, stops)
+
     private fun run(
         prompt: String,
         sampling: Sampling,
         maxNewTokens: Int,
         onDelta: ((String) -> Unit)?,
+        grammar: String? = null,
+        stops: List<String> = emptyList(),
     ): String {
         val current = handle
         if (current == 0L) throw IllegalStateException("No .gguf model is loaded.")
 
         writing = true
+        val marks = if (stops.isEmpty()) null else StopMarks(stops)
+        var stopped = false
         try {
-            val sink = if (onDelta == null) null else object : TokenSink {
+            val sink = object : TokenSink {
                 override fun onToken(piece: String) {
-                    if (piece.isNotEmpty()) onDelta(piece)
+                    if (piece.isEmpty()) return
+                    val text = if (marks == null) piece else marks.take(piece)
+                    if (text.isNotEmpty()) onDelta?.invoke(text)
+                    if (marks?.isStopped == true && !stopped) {
+                        stopped = true
+                        nativeCancel(current)
+                    }
                 }
             }
             val reply = nativeGenerate(
@@ -103,14 +126,15 @@ class LlamaEngine(private val ctx: Context) : Engine {
                 sampling.repeatPenalty,
                 Sampling.RepeatLastN,
                 maxNewTokens.coerceAtLeast(1),
+                grammar,
                 sink,
             )
-            if (reply.isEmpty() && !writingCancelled) {
+            if (reply.isEmpty() && !writingCancelled && !stopped) {
                 throw IllegalStateException(
                     nativeLastError().ifEmpty { "The model did not write anything back." },
                 )
             }
-            return reply
+            return if (marks == null) reply else marks.truncate(reply)
         } finally {
             writing = false
             writingCancelled = false
@@ -241,6 +265,7 @@ class LlamaEngine(private val ctx: Context) : Engine {
         repeatPenalty: Float,
         repeatLastN: Int,
         maxNewTokens: Int,
+        grammar: String?,
         sink: TokenSink?,
     ): String
 

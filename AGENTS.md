@@ -443,3 +443,45 @@ throws, and the app shows a blank screen. `ViewModelStartupTest` keeps that hone
   "alarm laga" and the Hindi claim phrases ("kar diya") were removed with them.
 - The tool functions themselves (`whatsapp`, `call`, `sendSms`) are unchanged and still do the
   lookup, the chooser and the group search; only the sentence-to-tool shortcut is gone.
+
+## FunctionGemma diesele lives in one file (v0.25)
+
+- `brain/FunctionGemma.kt` holds the whole Gemma 3 tool dialect and **nothing calls it yet**:
+  `tools()` writes the developer block, `STOPS` are the marks that end a turn, `read()` parses
+  `call:name{arg:<escape>v<escape>}`, the `call("a","b")` variant and calls cut mid-value,
+  `response()` writes the trained tool-reply shape, `clean()` removes every special token and
+  `withoutLoop()` cuts a repeated `<escape>` run.
+- `handles(modelName)` is true only for a FunctionGemma file name, so wiring it in later is a
+  single branch and no ordinary `.gguf` can be affected. Tests: `FunctionGemmaTest`.
+
+## What the real FunctionGemma file does (v0.26)
+
+Measured on `unsloth/functiongemma-270m-it-GGUF` Q8_0 with the official
+`chat_template.jinja` (tools declared as `<start_function_declaration>declaration:name{…}`)
+and this command set; harness is `tools/functiongemma_eval.py`.
+
+- The **format is right** once the template is used: every run answered in
+  `<start_function_call>call:name{arg:<escape>value<escape>}`, and a call was never missing.
+- **Tool choice is weak at 270M with 8 tools**: "bhai youtube khol de" -> `flashlight`,
+  "papa ko call kar do" -> `whatsapp`, "call mummy" -> `call{description:…}`.
+- Hinglish leaks into the argument: `contact: "shubham ko"` - hence `FunctionGemma.tidyArg`.
+- A failed turn repeats the same call rather than correcting, so the app needs the loop guard.
+- `<escape>`/`<start_function_call>` are added tokens with `special: false` in the tokenizer,
+  which is why they decode as text; `<end_function_call>` is not an EOS either, so a stop
+  string, not the tokenizer, has to end the turn.
+
+## Fast local turns: prefix cache, shaped grammar, hard stop (v0.27)
+
+- `llama_jni.cpp` keeps `Session::cache`, every token already in the KV cache (prompt + answer).
+  A turn finds the shared prefix, rewinds memory to it and decodes only the tail, so a short
+  follow-up no longer pays for the whole tool block. The prompt tail is decoded with an explicit
+  `llama_batch` (hand-written positions), because a batch starting at 0 after a rewind is wrong.
+- `nativeGenerate` takes a grammar string; it is added as the first sampler. A grammar the build
+  cannot parse is dropped, never fatal.
+- `ToolGrammar.forTools(specs)` writes the GBNF: only real tool names, only real keys, value
+  `<escape>...<escape>` with no `<`, ending on `<end_function_call>`. Model still chooses.
+- `StopMarks` cuts a turn at the first stop mark, holding back the tail so a mark split across
+  pieces is still caught; `LlamaEngine.generateShaped` cancels the engine the moment it lands.
+- The workspace APK is built with `-I /tmp/skip-native.gradle` because this box has a 4 GB cgroup
+  and the llama.cpp build dies in it. The C++ was verified with `clang++ -fsyntax-only` against
+  the fetched llama.cpp headers; the .so itself has to be built on a machine with more memory.
