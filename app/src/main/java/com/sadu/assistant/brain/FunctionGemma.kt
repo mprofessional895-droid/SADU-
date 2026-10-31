@@ -1,8 +1,6 @@
 package com.sadu.assistant.brain
 
 import com.sadu.assistant.ToolSpec
-import org.json.JSONArray
-import org.json.JSONObject
 
 /**
  * The Gemma 3 function-calling dialect, in one file and used by nothing else yet.
@@ -35,25 +33,37 @@ object FunctionGemma {
     fun handles(modelName: String): Boolean =
         modelName.lowercase().replace("-", "").replace("_", "").contains("functiongemma")
 
-    /** The developer block the model was trained to read: one JSON object per tool. */
+    /**
+     * The developer block the model was trained to read. Not JSON: the official template writes
+     * `<start_function_declaration>declaration:<name>{description:<escape>…<escape>,
+     * parameters:{properties:{…},required:[…],type:<escape>OBJECT<escape>}}<end_function_declaration>`.
+     */
     fun tools(specs: List<ToolSpec>): String {
-        val array = JSONArray()
+        val out = StringBuilder(
+            "You are a model that can do function calling with the following functions",
+        )
         for (spec in specs) {
-            val params = JSONObject().put("type", "object")
-            val props = JSONObject()
-            for (arg in spec.args.split(',').map { it.trim().substringBefore(' ') }) {
-                if (arg.isNotEmpty()) props.put(arg, JSONObject().put("type", "string"))
+            val names = spec.args.split(',').map { it.trim().substringBefore(' ') }.filter { it.isNotEmpty() }
+            out.append("\n<start_function_declaration>declaration:").append(spec.name)
+            out.append("{description:").append(ESCAPE).append(spec.description).append(ESCAPE)
+            if (names.isNotEmpty()) {
+                out.append(",parameters:{properties:{")
+                names.forEachIndexed { i, arg ->
+                    if (i > 0) out.append(',')
+                    out.append(arg).append(":{description:").append(ESCAPE).append(arg)
+                        .append(ESCAPE).append(",type:").append(ESCAPE).append("STRING")
+                        .append(ESCAPE).append('}')
+                }
+                out.append("},required:[")
+                names.forEachIndexed { i, arg ->
+                    if (i > 0) out.append(',')
+                    out.append(ESCAPE).append(arg).append(ESCAPE)
+                }
+                out.append("],type:").append(ESCAPE).append("OBJECT").append(ESCAPE).append('}')
             }
-            params.put("properties", props)
-            array.put(
-                JSONObject()
-                    .put("name", spec.name)
-                    .put("description", spec.description)
-                    .put("parameters", params),
-            )
+            out.append("}<end_function_declaration>")
         }
-        return "You are a model that can do function calling with the following functions:\n" +
-            array.toString()
+        return out.toString()
     }
 
     /** One call the model asked for. `args` keeps the order the model wrote them in. */
@@ -99,6 +109,14 @@ object FunctionGemma {
         }
         return out
     }
+
+    /**
+     * A Hinglish sentence leaves its postposition in the argument - the model wrote
+     * `contact: "shubham ko"` in every run. The trailing particle is not part of a name.
+     */
+    fun tidyArg(value: String): String = value.trim()
+        .replace(Regex("\\s+(?:ko|se|me|par|pe|k liye)$", RegexOption.IGNORE_CASE), "")
+        .trim()
 
     /** What the model gets back after a tool ran, in the shape it was trained on. */
     fun response(name: String, result: String): String =

@@ -453,3 +453,19 @@ throws, and the app shows a blank screen. `ViewModelStartupTest` keeps that hone
   `withoutLoop()` cuts a repeated `<escape>` run.
 - `handles(modelName)` is true only for a FunctionGemma file name, so wiring it in later is a
   single branch and no ordinary `.gguf` can be affected. Tests: `FunctionGemmaTest`.
+
+## What the real FunctionGemma file does (v0.26)
+
+Measured on `unsloth/functiongemma-270m-it-GGUF` Q8_0 with the official
+`chat_template.jinja` (tools declared as `<start_function_declaration>declaration:name{…}`)
+and this command set; harness is `tools/functiongemma_eval.py`.
+
+- The **format is right** once the template is used: every run answered in
+  `<start_function_call>call:name{arg:<escape>value<escape>}`, and a call was never missing.
+- **Tool choice is weak at 270M with 8 tools**: "bhai youtube khol de" -> `flashlight`,
+  "papa ko call kar do" -> `whatsapp`, "call mummy" -> `call{description:…}`.
+- Hinglish leaks into the argument: `contact: "shubham ko"` - hence `FunctionGemma.tidyArg`.
+- A failed turn repeats the same call rather than correcting, so the app needs the loop guard.
+- `<escape>`/`<start_function_call>` are added tokens with `special: false` in the tokenizer,
+  which is why they decode as text; `<end_function_call>` is not an EOS either, so a stop
+  string, not the tokenizer, has to end the turn.

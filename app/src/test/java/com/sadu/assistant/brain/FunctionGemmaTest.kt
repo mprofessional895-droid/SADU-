@@ -71,10 +71,12 @@ class FunctionGemmaTest {
     @Test
     fun theToolBlockCarriesEveryTool() {
         val block = FunctionGemma.tools(specs)
-        assertTrue(block.contains("\"name\":\"open_app\""))
-        assertTrue(block.contains("\"name\":\"whatsapp\""))
-        assertTrue(block.contains("\"contact\":{\"type\":\"string\"}"))
-        assertTrue("one object per tool", block.contains("function calling"))
+        assertTrue(block.contains("<start_function_declaration>declaration:open_app{"))
+        assertTrue(block.contains("<start_function_declaration>declaration:whatsapp{"))
+        assertTrue("arguments are declared", block.contains("contact:{"))
+        assertTrue("the trained header", block.contains("function calling"))
+        assertTrue("each declaration is closed", block.endsWith("<end_function_declaration>"))
+        assertFalse("not the JSON shape", block.contains("\"name\""))
     }
 
     @Test
@@ -108,6 +110,14 @@ class FunctionGemmaTest {
         assertTrue(out.endsWith("<end_function_response>"))
         assertTrue(out.contains("Opened YouTube."))
         assertEquals("open_app", FunctionGemma.read("""<start_function_call>call:open_app{app:<escape>youtube<escape>}<end_function_call>""")?.name)
+    }
+
+    @Test
+    fun aHinglishPostpositionIsNotPartOfTheName() {
+        assertEquals("shubham", FunctionGemma.tidyArg("shubham ko"))
+        assertEquals("mummy", FunctionGemma.tidyArg(" mummy se "))
+        assertEquals("Rahul Sharma", FunctionGemma.tidyArg("Rahul Sharma"))
+        assertEquals("papa", FunctionGemma.tidyArg("papa ko"))
     }
 
     @Test
