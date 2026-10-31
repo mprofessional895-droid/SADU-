@@ -42,8 +42,8 @@ class Assistant(
     private val riskyAllowed: () -> Boolean = { false },
     /** Whether to prefer sending control requests directly to the model instead of rule handling. */
     private val preferCloudForActions: () -> Boolean = { false },
-    /** If cloud brain is enabled but has a configuration issue, returns that problem string. */
-    private val cloudProblem: () -> String? = { null },
+    /** Why the cloud brain cannot answer, when it is switched on but not set up. */
+    private val brainProblem: () -> String? = { null },
 ) {
     private val history = ArrayList<Turn>()
 
@@ -373,16 +373,17 @@ class Assistant(
     }
 
     private fun notReady(current: Mode): String {
-        val prob = cloudProblem()
-        if (prob != null) {
-            return "The cloud brain is turned on, but it is not ready: $prob. Check your settings under Cloud brain."
+        // A switched-on cloud brain that cannot answer is a different problem from no brain
+        // at all, and saying which one it is saves a trip through Settings guessing.
+        brainProblem()?.let { why ->
+            return "The cloud brain is on but cannot answer: $why"
         }
         return if (current == Mode.Chat) {
-            "My AI model isn't loaded yet. Import a model file in Settings, " +
-                "or check your cloud model settings under Cloud brain."
+            "No brain is loaded: the cloud brain is off and there is no model file. " +
+                "Turn the cloud brain on in Settings, or import a model file."
         } else {
-            "My AI model isn't ready. Import a model file or check your cloud model settings " +
-                "in Settings, or give me a simple command like \"set an alarm for 7 am\"."
+            "No brain is loaded, so I can only run simple commands like \"set an alarm for 7 am\". " +
+                "Turn the cloud brain on in Settings, or import a model file."
         }
     }
 

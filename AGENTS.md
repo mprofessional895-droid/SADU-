@@ -332,3 +332,33 @@ A single close name is answered in words ("Did you mean Papa? Say yes") and does
 open the chooser - one button for one obvious guess is a speed bump. `Actions.contactMiss`
 opens it only when two or more names are close, which is the case where a popup is faster
 than reading a sentence.
+
+## Commands that must never reach the model (v0.18.2)
+
+`CommandParser.ACTION_WORDS` decides whether a sentence is an order at all. Missing a verb
+there does not just lose one phrasing - it sends the **whole family** to the model, which
+then answers "no model loaded" when none is. `whatsapp`, `wa`, `msg`, `bhej`, `bhejo` were
+missing, so every English WhatsApp sentence fell through. Anything that names a phone
+action belongs in that set, and `MessagePhrasingTest` pins the phrasings.
+
+Two other lessons: `notReady()` must name the real reason (cloud on but not set up vs no
+brain at all), and an empty contact list must not be reported as "no such contact".
+
+## Cloud tool calling (v0.19)
+
+`CloudReply` turns every provider's own function call into the one shape the app speaks,
+`{"tool":name,"args":{...}}`, so nothing downstream knows the difference:
+
+- **OpenAI-compatible**: `message.tool_calls` when whole; `choices[0].delta.tool_calls`
+  when streamed, where the name arrives once and `arguments` in slices - `Call.merge`
+  joins them by `index`.
+- **Anthropic**: `content_block_start` with `content_block.type == "tool_use"` names the
+  tool, `content_block_delta` / `input_json_delta` / `partial_json` fills the arguments;
+  whole replies carry `content[] {type:"tool_use", input:{...}}`.
+- **Gemini**: `candidates[].content.parts[].functionCall{name,args}` in both modes.
+
+Rules that keep it safe: text wins over a call when the model said something too; a
+JSON `null` content reads as "said nothing" (optString would have produced the word
+"null"); only the first call of a reply is used, because the loop runs one tool per step.
+`CloudToolCallsTest` pins each shape and `CloudCanControlLiveTest` runs the whole loop
+against a stub provider over real HTTP for all three formats.
