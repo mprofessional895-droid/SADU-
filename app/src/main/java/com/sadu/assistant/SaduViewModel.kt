@@ -72,7 +72,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             a.onNeedPermission = { perm -> noteNeeded(perm, lastAsked) }
             a.onChoices = { names -> nameChoices = names }
         }
-    private val tools = Tools(actions, memory, { prefs.mode }, { prefs.riskyControls })
+    private val tools = Tools(actions, memory, { prefs.mode })
     // Starts on whichever engine the settings point at, so a cold start and a switch agree.
     private val localBrain = SwitchableBrain(brainFor(engine))
     private val cloudBrain = CloudBrain { cloudConfig() }
@@ -109,8 +109,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         { prefs.internetEnabled && prefs.webAnswers },
         { prefs.internetEnabled },
         WebSearch.live(),
-        { prefs.riskyControls },
-        { prefs.preferCloudForActions },
+        { cloudWanted() },
         { if (prefs.cloudEnabled) cloudConfig().problem() else null },
     )
     private val store = ChatHistory(ctx)
@@ -207,9 +206,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     var internetOn by mutableStateOf(prefs.internetEnabled)
         private set
 
-    /** Messages, calls, app installs, screen taps: off by default, see [ToolPolicy]. */
-    var riskyControls by mutableStateOf(prefs.riskyControls)
-        private set
     var wakeOn by mutableStateOf(prefs.wakeWordEnabled)
         private set
     var confirmSms by mutableStateOf(prefs.confirmSms)
@@ -265,8 +261,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var cloudKeyProtected by mutableStateOf(prefs.cloudKeyProtected)
         private set
-    var preferCloudForActions by mutableStateOf(prefs.preferCloudForActions)
-        private set
 
     /** Whether "search for ..." is looked up and answered from the results. */
     var webAnswers by mutableStateOf(prefs.webAnswers)
@@ -286,7 +280,23 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun refreshCloudProblem() {
         cloudProblem = cloudConfig().problem()
+        cloudReady = cloudConfig().shouldAnswer(prefs.cloudEnabled)
     }
+
+    /** A cloud model that is switched on and set up can answer, even with no model file. */
+    var cloudReady by mutableStateOf(false)
+        private set
+
+    /** True when some brain can answer: a model file, or the cloud. */
+    val brainReady: Boolean get() = modelReady || cloudReady
+
+    /** The Home line under the mode switch, or null when there is nothing to report. */
+    val statusNote: String?
+        get() = when {
+            modelReady -> null
+            cloudReady -> "Cloud model connected - the on-device model is not loaded"
+            else -> modelNote
+        }
 
     // ------------------------------------------------------------------ runtime
 
@@ -702,11 +712,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         prefs.internetEnabled = on
     }
 
-    fun changeRiskyControls(on: Boolean) {
-        riskyControls = on
-        prefs.riskyControls = on
-    }
-
     fun changeConfirmSms(on: Boolean) {
         confirmSms = on
         prefs.confirmSms = on
@@ -993,11 +998,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         prefs.contextTokens = clamped
         // The window is fixed when the model loads, so reload it in the background.
         if (modelReady) loadModel()
-    }
-
-    fun choosePreferCloudForActions(on: Boolean) {
-        preferCloudForActions = on
-        prefs.preferCloudForActions = on
     }
 
     fun chooseCloudEnabled(on: Boolean) {

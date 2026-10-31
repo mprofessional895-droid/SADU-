@@ -96,7 +96,7 @@ class AssistantWebTest {
         brain,
         actions,
         Memory(ctx),
-        Tools(actions, Memory(ctx), { prefs.mode }, { prefs.riskyControls }),
+        Tools(actions, Memory(ctx), { prefs.mode }),
         { "auto" },
         { prefs.mode },
         { ContextBudget.Default },

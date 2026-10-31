@@ -229,14 +229,25 @@ line, `SEARCH: <query>`, which `Assistant.searchRequest` picks up and answers fr
   which gathers toward a drifting point while thinking and streams upward while answering.
 - The assistant's turn in a conversation has no bubble: full-width text with a hairline rule.
 
-## Safe control (v0.14)
+## Safe control (v0.14, replaced in v0.20)
 
-Control mode now has two gates, not one:
+**v0.20 removed the second gate.** Control mode is now the permission, and the only one:
+
+- `ModePolicy` (`Mode.kt`) decides whether a mode may touch the phone at all. Chat keeps the
+  network and nothing else; Control gets the whole toolbox.
+- `ToolPolicy.kt`, `Prefs.riskyControls`, `Tools.menu(risky)` and the `riskyAllowed` prompt flag
+  are gone. Messages, calls, app installs, `forget` and screen `tap`/`type` run in Control mode
+  with no extra switch. `confirmSms` / `directCall` still apply on top for SMS and calls.
+- The old "Bypass local rules for phone control" preference is gone too. Control mode with the
+  cloud switched on now always asks the cloud model first (it has the whole toolbox), and the
+  rule layer is the fallback when the cloud is off, unset, or fails mid-message.
+
+History, kept because later notes still refer to it (superseded by the above):
 
 1. `ModePolicy` (`Mode.kt`) - "may this mode touch the phone at all". Chat mode still gets the
    network and nothing else.
 2. `ToolPolicy` (`ToolPolicy.kt`) - "is this particular control switched on". `Prefs.riskyControls`,
-   off by default.
+   off by default. **Removed in v0.20.**
 
 Elevated (needs the switch): `call`, `send_sms`, `install_app`, `forget`, and the `screen`
 actions `tap` / `type`. Anything unnamed, or any unknown screen action, is elevated - the
@@ -254,8 +265,9 @@ controls are off. The prompt is a courtesy; `ToolPolicy` is the enforcement.
 Safe and new in v0.14: `media` (pause / resume / next / previous / stop via media keys).
 `CommandParser.ACTION_WORDS` needs any new command verb, or the rule layer never sees it.
 
-Tests: `ToolPolicyTest` (the classification itself), `SafeControlTest` (the gates with Robolectric),
-plus two `ScreensRenderTest` shots of the switch off and on.
+Tests: `SafeControlTest` (Control mode acts, Chat mode refuses, with Robolectric) and the
+`ScreensRenderTest` shot of the Control-mode settings page. `ToolPolicyTest` was deleted with
+the gate.
 
 ## Control mode steps (v0.15)
 
@@ -362,3 +374,18 @@ JSON `null` content reads as "said nothing" (optString would have produced the w
 "null"); only the first call of a reply is used, because the loop runs one tool per step.
 `CloudToolCallsTest` pins each shape and `CloudCanControlLiveTest` runs the whole loop
 against a stub provider over real HTTP for all three formats.
+
+## Cloud first in Control mode (v0.20)
+
+- `Assistant` takes `cloudWanted: () -> Boolean` (from `SaduViewModel.cloudWanted()`). When it is
+  true and the mode is Control, the message goes to the model before the rule layer, so a cloud
+  model's tool call decides what happens. On a failed call the rules get one chance, then
+  `brainFailure()` says which brain gave up and why.
+- A failed model call in the middle of a tool chain returns `steps.summary()` instead of throwing
+  away what already ran on the phone.
+- Readiness is about the brain, not the model file: `SaduViewModel.brainReady` is
+  `modelReady || cloudReady`, and `statusNote` is what Home shows. With the cloud set up and no
+  local model the line reads "Cloud model connected - the on-device model is not loaded" instead
+  of nagging for a `.task` file. `SettingsScreen` hides its model note in the same case.
+- `notReady()` still names the three states: no brain at all (cloud off + no file), a cloud that
+  is on but misconfigured (`brainProblem()`), and a cloud call that failed (`brainFailure()`).

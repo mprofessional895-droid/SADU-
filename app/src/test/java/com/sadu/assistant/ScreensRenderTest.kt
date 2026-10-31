@@ -389,19 +389,12 @@ class ScreensRenderTest {
         shoot("settings-360x640")
     }
 
-    /** Safe control: the new switch, off and on, on the Control-mode settings page. */
+    /** Control mode settings page, where the mode switch is the permission. */
     @Test
     @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
-    fun settingsSafeControlOff() {
-        show { settingsContent(mode = Mode.Control, risky = false) }
-        shoot("settings-safe-control-off-360x640")
-    }
-
-    @Test
-    @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
-    fun settingsSafeControlOn() {
-        show { settingsContent(mode = Mode.Control, risky = true) }
-        shoot("settings-safe-control-on-360x640")
+    fun settingsControlMode() {
+        show { settingsContent(mode = Mode.Control) }
+        shoot("settings-control-mode-360x640")
     }
 
     @Test
@@ -488,13 +481,11 @@ class ScreensRenderTest {
     }
 
     @Composable
-    private fun settingsContent(mode: Mode = Mode.Default, risky: Boolean = false) {
+    private fun settingsContent(mode: Mode = Mode.Default) {
         SettingsContent(
                 onMode = {},
-                onRiskyControls = {},
                 state = SettingsUiState(
                     mode = mode,
-                    riskyControls = risky,
                     modelReady = true,
                     modelPresent = true,
                     modelNote = READY_NOTE,

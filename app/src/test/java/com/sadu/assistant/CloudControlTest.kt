@@ -49,9 +49,11 @@ class CloudControlTest {
         ctx = ApplicationProvider.getApplicationContext()
         prefs = Prefs(ctx)
         prefs.mode = Mode.Control
-        prefs.riskyControls = false
         prefs.internetEnabled = false
     }
+
+    /** Whether a cloud model is switched on and set up, which is what makes it decide. */
+    private var cloudOn = false
 
     private fun assistant(brain: Brain): Assistant {
         val memory = Memory(ctx)
@@ -60,13 +62,12 @@ class CloudControlTest {
             brain = brain,
             actions = actions,
             memory = memory,
-            tools = Tools(actions, memory, { prefs.mode }, { prefs.riskyControls }),
+            tools = Tools(actions, memory, { prefs.mode }),
             language = { "auto" },
             mode = { prefs.mode },
             contextTokens = { ContextBudget.Default },
             replyLength = { ReplyLength.Short },
-            riskyAllowed = { prefs.riskyControls },
-            preferCloudForActions = { prefs.preferCloudForActions },
+            cloudWanted = { cloudOn },
         )
     }
 
@@ -126,8 +127,8 @@ class CloudControlTest {
     }
 
     @Test
-    fun preferCloudForActionsBypassesLocalRulesInControlMode() {
-        prefs.preferCloudForActions = true
+    fun theCloudModelHandlesControlMessagesBeforeTheRules() {
+        cloudOn = true
         val cloud = FakeBrain("cloud", listOf("cloud handled action"))
         val local = FakeBrain("local", listOf("local answer"))
         val router = BrainRouter(local, cloud, cloudWanted = { true })

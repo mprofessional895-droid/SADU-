@@ -22,7 +22,6 @@ object ControlPrompt {
         menu: String,
         languageName: String,
         length: ReplyLength = ReplyLength.Default,
-        riskyAllowed: Boolean = false,
         toolResults: List<String> = emptyList(),
         retry: Boolean = false,
     ): String {
@@ -69,13 +68,6 @@ object ControlPrompt {
         sb.append("- Do not use # headings or a wall of bold. At most one short bold word now and then.\n")
         sb.append("- If the message carries web results, answer from them in plain words and say the ")
         sb.append("answer comes from a web search.\n")
-        if (!riskyAllowed) {
-            sb.append("- Messages, calls, app installs and tapping or typing inside other apps are ")
-            sb.append("switched off in this app right now, and those tools are not in your list. If ")
-            sb.append("the user asks for one of them, say plainly that this control is off and that ")
-            sb.append("Settings > What Sadu may do > Risky controls turns it on. Never say you did ")
-            sb.append("it, and never promise to.\n")
-        }
         sb.append("\n")
         return sb.toString()
     }

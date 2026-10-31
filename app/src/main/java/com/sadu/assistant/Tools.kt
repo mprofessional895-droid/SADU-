@@ -22,8 +22,6 @@ class Tools(
     private val memory: Memory,
     /** Which mode is active. Chat mode only lets the network tools run. */
     private val mode: () -> Mode = { Mode.Control },
-    /** Whether the controls that act as the user are switched on. Off by default. */
-    private val riskyControls: () -> Boolean = { false },
 ) {
 
     val specs: List<ToolSpec> = listOf(
@@ -70,19 +68,8 @@ class Tools(
     fun has(name: String): Boolean =
         specs.any { it.name.equals(name.trim(), ignoreCase = true) }
 
-    fun menu(risky: Boolean = true): String = specs
-        .filter { risky || it.name.lowercase() !in ToolPolicy.ElevatedTools }
-        .map { spec ->
-            if (!risky && spec.name == "screen") {
-                spec.copy(
-                    args = "action (back|home|recents|scroll_down|scroll_up|read_screen), text",
-                    description = "navigate or read the screen via accessibility",
-                )
-            } else {
-                spec
-            }
-        }
-        .joinToString("\n") { "- ${it.name}(${it.args}): ${it.description}" }
+    fun menu(): String =
+        specs.joinToString("\n") { "- ${it.name}(${it.args}): ${it.description}" }
 
     fun run(name: String, args: Map<String, String>): ToolOutcome {
         // Chat mode is enforced here, not only in the prompt: a model that ignores its
@@ -90,11 +77,6 @@ class Tools(
         val key = name.trim().lowercase()
         if (!ModePolicy.allowed(mode(), key) && ModePolicy.isPhoneTool(key)) {
             return ToolOutcome(ModePolicy.refusal())
-        }
-        // The second gate: a control the user has not switched on never runs, whichever model
-        // asked for it and whatever the model believed about its instructions.
-        if (!ToolPolicy.allowed(key, riskyControls(), args)) {
-            return ToolOutcome(ToolPolicy.paused(ToolPolicy.subject(key, args)), handled = false)
         }
         fun arg(vararg keys: String): String {
             for (k in keys) args[k]?.let { if (it.isNotBlank()) return it }

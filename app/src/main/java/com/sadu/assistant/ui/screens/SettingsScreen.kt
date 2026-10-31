@@ -119,9 +119,7 @@ data class SettingsUiState(
     val cloudKeyProtected: Boolean = false,
     val cloudTest: String? = null,
     val cloudProblem: String? = null,
-    val preferCloudForActions: Boolean = false,
     val webAnswers: Boolean = true,
-    val riskyControls: Boolean = false,
 )
 
 @Composable
@@ -176,9 +174,7 @@ fun SettingsScreen(vm: SaduViewModel) {
             cloudKeyProtected = vm.cloudKeyProtected,
             cloudTest = vm.cloudTest,
             cloudProblem = vm.cloudProblem,
-            preferCloudForActions = vm.preferCloudForActions,
             webAnswers = vm.webAnswers,
-            riskyControls = vm.riskyControls,
         ),
         onMode = { vm.chooseMode(it) },
         onImportModel = { picker.launch(arrayOf("*/*")) },
@@ -207,9 +203,7 @@ fun SettingsScreen(vm: SaduViewModel) {
         onCloudKey = { vm.editCloudApiKey(it) },
         onClearCloudKey = { vm.clearCloudApiKey() },
         onTestCloud = { vm.testCloud() },
-        onPreferCloudForActions = { vm.choosePreferCloudForActions(it) },
         onWebAnswers = { vm.chooseWebAnswers(it) },
-        onRiskyControls = { vm.changeRiskyControls(it) },
     )
 }
 
@@ -240,9 +234,7 @@ fun SettingsContent(
     onCloudKey: (String) -> Unit = {},
     onClearCloudKey: () -> Unit = {},
     onTestCloud: () -> Unit = {},
-    onPreferCloudForActions: (Boolean) -> Unit = {},
     onWebAnswers: (Boolean) -> Unit = {},
-    onRiskyControls: (Boolean) -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -278,32 +270,10 @@ fun SettingsContent(
                     ModeSwitch(mode = state.mode, onSelect = onMode)
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        text = "Chat keeps the assistant's full attention on talking with you. " +
-                            "Control gives it your phone as well, so it can read the screen, " +
-                            "navigate, set alarms, open apps and change the volume.",
-                        color = Ink.TextDim,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    HairlineDivider()
-                    ToggleRow(
-                        title = "Risky controls",
-                        subtitle = "Messages, calls, app installs, screen taps",
-                        checked = state.riskyControls,
-                        onCheckedChange = onRiskyControls,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = if (state.riskyControls) {
-                            "On: Sadu may send messages, place calls, install apps, and tap or " +
-                                "type inside other apps. The switches under Messages and calls " +
-                                "still apply."
-                        } else {
-                            "Off: Sadu reads, navigates and does reversible things - alarms, " +
-                                "volume, flashlight, music, opening apps - but it will not act as " +
-                                "you. Sending a message, calling, installing an app, tapping or " +
-                                "typing inside another app, and forgetting your details all wait " +
-                                "for you to turn this on."
-                        },
+                        text = "Chat keeps the assistant's full attention on talking with you " +
+                            "and it cannot touch the phone. Control gives it your phone: it can " +
+                            "read the screen, navigate, set alarms, open apps, call, message and " +
+                            "install. The mode is the permission.",
                         color = Ink.TextDim,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -321,7 +291,9 @@ fun SettingsContent(
                     present = state.modelPresent,
                     bytes = state.modelBytes,
                     label = state.modelLabel,
-                    note = state.modelNote?.takeIf { it != READY_NOTE },
+                    note = state.modelNote?.takeIf {
+                        it != READY_NOTE && !(state.cloudEnabled && state.cloudProblem == null)
+                    },
                     copyPercent = state.modelCopyPercent,
                     onChoose = onChooseEngine,
                     onImportTask = onImportModel,
@@ -381,8 +353,6 @@ fun SettingsContent(
                     keyProtected = state.cloudKeyProtected,
                     test = state.cloudTest,
                     problem = state.cloudProblem,
-                    preferCloudForActions = state.preferCloudForActions,
-                    onPreferCloudForActions = onPreferCloudForActions,
                     onEnabled = onCloudEnabled,
                     onProvider = onCloudProvider,
                     onBaseUrl = onCloudBaseUrl,
