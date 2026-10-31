@@ -399,8 +399,11 @@ class Actions(
     }
 
     fun call(who: String): String {
-        val hit = findContact(who) ?: return contactMiss(who, What.Call, "")
-        return callContact(hit)
+        when (val found = resolve(who)) {
+            is Found.One -> return callContact(found.contact)
+            is Found.Many -> return askWhich(found.options, What.Call, "", who, "call")
+            Found.None -> return contactMiss(who, What.Call, "")
+        }
     }
 
     private fun callContact(hit: Contact): String {
@@ -419,7 +422,11 @@ class Actions(
 
     fun sendSms(who: String, body: String): String {
         if (body.isBlank()) return "What should the message to $who say?"
-        val hit = findContact(who.trim()) ?: return contactMiss(who.trim(), What.Message, body)
+        val hit = when (val found = resolve(who.trim())) {
+            is Found.One -> found.contact
+            is Found.Many -> return askWhich(found.options, What.Message, body, who.trim(), "text")
+            Found.None -> return contactMiss(who.trim(), What.Message, body)
+        }
         val canSend = ctx.checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
         if (canSend && !prefs.confirmSms) {
             return try {
@@ -449,16 +456,76 @@ class Actions(
      */
     fun whatsapp(who: String, body: String): ToolOutcome {
         if (body.isBlank()) return ToolOutcome("What should the message to $who say?")
-        val hit = findContact(who.trim())
-            ?: return ToolOutcome(contactMiss(who.trim(), What.Message, body))
-        if (openWhatsApp(hit, body)) {
+        when (val found = resolve(who.trim())) {
+            is Found.One -> return message(found.contact, body)
+            is Found.Many -> return ToolOutcome(
+                askWhich(found.options, What.Message, body, who.trim(), "message"),
+            )
+            Found.None -> {
+                // A WhatsApp group is not in the phone's contacts, so the only way to reach
+                // one is to search WhatsApp itself - by hand, with the user's own phone.
+                groupSearch(who.trim(), body)?.let { return it }
+                return ToolOutcome(contactMiss(who.trim(), What.Message, body))
+            }
+        }
+    }
+
+    /** Opens the chat with a message typed, and stops: the user taps Send. */
+    private fun message(contact: Contact, body: String): ToolOutcome {
+        if (openWhatsApp(contact, body)) {
             return ToolOutcome(
-                display = "I've opened WhatsApp with the message to ${hit.name} ready. Tap Send.",
+                display = "I've opened WhatsApp with the message to ${contact.name} ready. Tap Send.",
                 awaitingUser = true,
                 confirmHint = "Send in WhatsApp",
             )
         }
         return ToolOutcome("I couldn't open WhatsApp. Check that it is installed.")
+    }
+
+    /**
+     * A WhatsApp group is not a contact - the phone has no list of them - so the only way to
+     * reach one is to use WhatsApp's own search, the way a person would: open it, type the
+     * group's name, open the chat and leave the message typed for the user to send. It runs
+     * only for a name that says "group", so a mistyped contact name can never land here.
+     */
+    private fun groupSearch(name: String, body: String): ToolOutcome? {
+        if (!name.contains("group", ignoreCase = true) && !name.contains("grp", ignoreCase = true)) {
+            return null
+        }
+        val service = accessibility() ?: return ToolOutcome(
+            "WhatsApp groups need Screen control. Turn it on in Settings, then ask again.",
+        )
+        val pkg = WHATSAPP_PACKAGES.firstOrNull {
+            ctx.packageManager.getLaunchIntentForPackage(it) != null
+        } ?: return null
+        val launch = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: return null
+        if (!go(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))) {
+            return ToolOutcome("I couldn't open WhatsApp.")
+        }
+        Thread.sleep(1800)
+        if (!service.performAction("tap", "search").startsWith("Tapped")) {
+            service.performAction("tap", "chats")
+            Thread.sleep(600)
+            service.performAction("tap", "search")
+        }
+        Thread.sleep(700)
+        service.performAction("type", name)
+        Thread.sleep(1600)
+        val opened = service.performAction("tap_result", name)
+        if (!opened.startsWith("Opened")) {
+            return ToolOutcome(
+                "I opened WhatsApp but couldn't find a chat called \"$name\". " +
+                    "Check the exact group name and ask again.",
+            )
+        }
+        Thread.sleep(1400)
+        service.performAction("type", body)
+        Thread.sleep(400)
+        return ToolOutcome(
+            display = "I've opened the WhatsApp chat \"$name\" with your message typed. Tap Send.",
+            awaitingUser = true,
+            confirmHint = "Send in WhatsApp",
+        )
     }
 
     /**
@@ -665,7 +732,12 @@ class Actions(
     /** Which action was waiting on a name the user had to confirm. */
     enum class What { Call, Message }
 
-    private class Pick(val what: What, val body: String, val options: List<Contact>)
+    private class Pick(
+        val what: What,
+        val body: String,
+        val options: List<Contact>,
+        val labels: List<String> = emptyList(),
+    )
 
     /**
      * A name that matched nothing, held only until the very next message so "yes" or the
@@ -676,23 +748,80 @@ class Actions(
     private fun canReadContacts(): Boolean =
         ctx.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
 
-    private fun findContact(query: String): Contact? {
+    /** What a spoken name turned out to be. */
+    private sealed interface Found {
+        data class One(val contact: Contact) : Found
+        data class Many(val options: List<Contact>) : Found
+        data object None : Found
+    }
+
+    private fun wordsOf(s: String): List<String> =
+        s.lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+
+    /**
+     * A name is matched in the order a person would: the name as saved, then every word in
+     * it, then the relation ("papa" -> "dad"), then without "bhai" in front. Being stricter
+     * than a plain LIKE is what stops "Brijesh" from answering for "Brijesh Vadhel", and any
+     * name that still fits more than one saved contact is handed back for the user to pick.
+     */
+    private fun resolve(query: String): Found {
         val q = query.trim()
         if (Regex("^[+0-9 ()\\-]{5,}$").matches(q)) {
-            return Contact(q, q.filter { it.isDigit() || it == '+' })
+            return Found.One(Contact(q, q.filter { it.isDigit() || it == '+' }))
         }
-        if (q.isEmpty() || !canReadContacts()) return null
-        lookupContact(q)?.let { return it }
+        if (q.isEmpty() || !canReadContacts()) return Found.None
+        val saved = allContacts()
+        val want = wordsOf(q)
+        saved.firstOrNull { wordsOf(it.name) == want }?.let { return Found.One(it) }
+        val byWords = expand(saved.filter { c -> want.all { it in wordsOf(c.name) } })
+        if (byWords != null) return byWords
         for (variant in Relations.variants(q)) {
             if (variant.equals(q, ignoreCase = true)) continue
-            lookupContact(variant)?.let { return it }
+            val v = wordsOf(variant)
+            saved.firstOrNull { wordsOf(it.name) == v }?.let { return Found.One(it) }
+            expand(saved.filter { c -> v.all { it in wordsOf(c.name) } })?.let { return it }
         }
         // "bhai shubham ko message karde" - the address word is not part of the name.
         val bare = q.replace(Regex("^(?:bhaiya|bhai|bro|yaar)\\s+", RegexOption.IGNORE_CASE), "").trim()
         if (bare.isNotEmpty() && !bare.equals(q, ignoreCase = true)) {
-            lookupContact(bare)?.let { return it }
+            val w = wordsOf(bare)
+            saved.firstOrNull { wordsOf(it.name) == w }?.let { return Found.One(it) }
+            expand(saved.filter { c -> w.all { it in wordsOf(c.name) } })?.let { return it }
         }
-        return null
+        return Found.None
+    }
+
+    private fun expand(hits: List<Contact>): Found? = when {
+        hits.isEmpty() -> null
+        hits.size == 1 -> Found.One(hits.first())
+        else -> Found.Many(hits.take(5))
+    }
+
+    /** A number with only its last four digits visible, so the list never spills numbers. */
+    private fun mask(number: String): String {
+        val digits = number.filter { it.isDigit() }
+        return if (digits.length <= 4) "+" + digits else "••••" + digits.takeLast(4)
+    }
+
+    private fun label(contact: Contact): String = contact.name + " · " + mask(contact.number)
+
+    /**
+     * More than one saved name fits. Nothing is guessed: the question is asked and the
+     * chooser on screen offers the same names, each with a masked number so the right person
+     * is clear without showing whole numbers.
+     */
+    private fun askWhich(
+        options: List<Contact>,
+        what: What,
+        body: String,
+        query: String,
+        verb: String,
+    ): String {
+        val labels = options.map { label(it) }
+        pick = Pick(what, body, options, labels)
+        onChoices?.invoke(labels)
+        val list = labels.mapIndexed { i, l -> "${i + 1}. $l" }.joinToString(", ")
+        return "More than one contact matches \"$query\": $list. Which one should I $verb?"
     }
 
     /**
@@ -777,8 +906,8 @@ class Actions(
         if (options.isEmpty()) {
             return "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
         }
-        pick = Pick(what, body, options)
-        if (options.size > 1) onChoices?.invoke(options.map { it.name })
+        pick = Pick(what, body, options, options.map { label(it) })
+        if (options.size > 1) onChoices?.invoke(options.map { label(it) })
         return Suggest.question(who, options.map { it.name })
             ?: "I couldn't find \"$who\" in your contacts. Check the name, or tell me the number."
     }
@@ -817,7 +946,10 @@ class Actions(
     /** A name tapped in the chooser. Returns Sadu's answer, or null when nothing was waiting. */
     fun chooseName(name: String): String? {
         val held = pick ?: return null
-        val hit = held.options.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) }
+        val asked = name.trim()
+        val at = held.labels.indexOfFirst { it.equals(asked, ignoreCase = true) }
+        val hit = if (at >= 0) held.options[at]
+        else held.options.firstOrNull { it.name.equals(asked, ignoreCase = true) }
             ?: return null
         pick = null
         onChoices?.invoke(emptyList())
@@ -832,7 +964,7 @@ class Actions(
 
     private fun runPick(held: Pick, contact: Contact): String = when (held.what) {
         What.Call -> callContact(contact)
-        What.Message -> whatsapp(contact.name, held.body).display
+        What.Message -> message(contact, held.body).display
     }
 }
 

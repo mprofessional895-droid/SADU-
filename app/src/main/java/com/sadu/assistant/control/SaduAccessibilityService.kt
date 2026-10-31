@@ -35,6 +35,7 @@ class SaduAccessibilityService : AccessibilityService() {
         "scroll_down" -> scroll(true)
         "scroll_up" -> scroll(false)
         "tap" -> tap(text)
+        "tap_result" -> tapResult(text)
         "type" -> typeText(text)
         "read_screen" -> readScreen()
         else -> "I don't know how to do that on the screen."
@@ -67,6 +68,24 @@ class SaduAccessibilityService : AccessibilityService() {
             depth++
         }
         return null
+    }
+
+    /** Like [tap], but never the text field itself: the name you searched for is also in it. */
+    private fun tapResult(label: String?): String {
+        if (label.isNullOrBlank()) return "What should I open?"
+        val q = label.lowercase().trim()
+        val node = findNode { n ->
+            if (n.isEditable) return@findNode false
+            val t = n.text?.toString()?.lowercase()
+            val d = n.contentDescription?.toString()?.lowercase()
+            (t != null && t.contains(q)) || (d != null && d.contains(q))
+        } ?: return "I couldn't find \"$label\" in the list."
+        val target = clickableAncestor(node) ?: node
+        return if (target.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            "Opened \"$label\"."
+        } else {
+            "I found \"$label\" but couldn't open it."
+        }
     }
 
     private fun tap(label: String?): String {

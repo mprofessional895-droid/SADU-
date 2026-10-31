@@ -700,7 +700,8 @@ private fun NameChooser(names: List<String>, onPick: (String) -> Unit, onDismiss
         text = {
             Column {
                 Text(
-                    text = "That name isn't in your contacts. Did you mean one of these?",
+                    text = "More than one contact fits. Pick the right one - numbers are hidden "
+                        + "except the last four digits.",
                     color = Ink.TextDim,
                     style = MaterialTheme.typography.bodySmall,
                 )

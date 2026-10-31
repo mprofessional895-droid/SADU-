@@ -42,7 +42,7 @@ class Tools(
         ToolSpec(
             "whatsapp",
             "contact, message",
-            "write a WhatsApp message to a contact and open it; the user taps Send"
+            "write a WhatsApp message to a contact or a group and open the chat; the user taps Send. For a group, pass the group's exact name, e.g. \"boys group\""
         ),
         ToolSpec("open_app", "app", "open an installed app by name"),
         ToolSpec("play_music", "query", "play music or a song"),
