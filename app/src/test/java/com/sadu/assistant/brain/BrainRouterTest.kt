@@ -71,8 +71,31 @@ class BrainRouterTest {
             router.generate(request())
             org.junit.Assert.fail("Should have thrown IOException")
         } catch (e: java.io.IOException) {
-            assertEquals("no route to host", e.message)
+            assertEquals("Cloud model failed: no route to host", e.message)
         }
+    }
+
+    @Test
+    fun controlModeNeverFallsBackToTheDevice() {
+        val broken = Stub("Cloud (gpt-4o-mini)", fails = true)
+        val router = BrainRouter(local, broken) { true }
+
+        try {
+            router.generate(LlmRequest("system", emptyList(), "open youtube", Mode.Control))
+            org.junit.Assert.fail("Should have thrown IOException")
+        } catch (e: java.io.IOException) {
+            assertEquals("Cloud model failed: no route to host", e.message)
+            assertTrue("the on-device model is not asked", local.asked == 0)
+        }
+    }
+
+    @Test
+    fun chatModeStillAnswersOnTheDeviceWhenTheCloudFails() {
+        val broken = Stub("Cloud (gpt-4o-mini)", fails = true)
+        val router = BrainRouter(local, broken) { true }
+
+        assertEquals("local", router.generate(LlmRequest("system", emptyList(), "hi", Mode.Chat)))
+        assertEquals(1, local.asked)
     }
 
     @Test

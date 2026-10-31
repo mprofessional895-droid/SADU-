@@ -170,7 +170,11 @@ class Assistant(
             // A made-up tool name is worth one more try with the menu in front of the model.
             if (!tools.has(name) && !retried) {
                 retried = true
-                raw = ask(text, current, steps.all(), retry = true, onDelta)
+                raw = try {
+                    ask(text, current, steps.all(), retry = true, onDelta)
+                } catch (e: Throwable) {
+                    return afterFailure(text, e)
+                }
                 continue
             }
 
@@ -199,12 +203,8 @@ class Assistant(
             // A failed call mid-chain must not throw away what already ran on the phone.
             raw = try {
                 ask(text, current, steps.all(), retry = false, onDelta)
-            } catch (_: Throwable) {
-                stage = null
-                val partial = steps.summary()
-                answeredWithModel = true
-                remember(text, partial)
-                return partial
+            } catch (e: Throwable) {
+                return afterFailure(text, e)
             }
         }
 
@@ -374,6 +374,19 @@ class Assistant(
             user = text,
             mode = current,
         )
+    }
+
+    /**
+     * A model call that failed part-way through a tool chain. When a tool already ran - the
+     * chat was opened, the alarm was set - the steps that really happened are the answer.
+     */
+    private fun afterFailure(text: String, e: Throwable): String {
+        stage = null
+        if (steps.size == 0) return "Sorry, my brain hit an error: ${e.message}"
+        val summary = steps.summary()
+        answeredWithModel = true
+        remember(text, summary)
+        return summary
     }
 
     /** The built-in rules, or null when none of them understood the message. */

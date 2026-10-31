@@ -136,6 +136,22 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var modelReady by mutableStateOf(false)
         private set
+
+    /** A cloud model that is switched on and set up can answer, even with no model file. */
+    var cloudReady by mutableStateOf(false)
+        private set
+
+    /** True when some brain can answer: a model file, or the cloud. */
+    val brainReady: Boolean get() = modelReady || cloudReady
+
+    /** The Home line under the mode switch, or null when there is nothing to report. */
+    val statusNote: String?
+        get() = when {
+            modelReady -> null
+            cloudReady -> "Cloud model connected - the on-device model is not loaded"
+            else -> modelNote
+        }
+
     var modelPresent by mutableStateOf(false)
         private set
 
@@ -282,21 +298,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         cloudProblem = cloudConfig().problem()
         cloudReady = cloudConfig().shouldAnswer(prefs.cloudEnabled)
     }
-
-    /** A cloud model that is switched on and set up can answer, even with no model file. */
-    var cloudReady by mutableStateOf(false)
-        private set
-
-    /** True when some brain can answer: a model file, or the cloud. */
-    val brainReady: Boolean get() = modelReady || cloudReady
-
-    /** The Home line under the mode switch, or null when there is nothing to report. */
-    val statusNote: String?
-        get() = when {
-            modelReady -> null
-            cloudReady -> "Cloud model connected - the on-device model is not loaded"
-            else -> modelNote
-        }
 
     // ------------------------------------------------------------------ runtime
 
