@@ -622,15 +622,26 @@ class Actions(
     }
 
     private fun whatsappOrder(cmd: String): Pair<String, String>? {
-        val a = Regex(
-            "^whatsapp\\s+(.+?)\\s+(?:that|saying|ki|ke|:)\\s+(.+)$"
-        ).find(cmd)
-        if (a != null) return a.groupValues[1].trim() to a.groupValues[2].trim()
-        val b = Regex(
-            "^message\\s+(.+?)\\s+(?:on|via)\\s+whatsapp\\s+" +
-                "(?:that|saying|ki|ke|:)?\\s*(.+)$"
-        ).find(cmd)
-        if (b != null) return b.groupValues[1].trim() to b.groupValues[2].trim()
+        val patterns = listOf(
+            // "whatsapp papa that I am late", "whatsapp to papa saying ..."
+            "^whatsapp\\s+(?:to\\s+)?(.+?)\\s+(?:that|saying|ki|ke|:)\\s+(.+)$",
+            // "message papa on whatsapp that ..."
+            "^(?:message|msg|text|send a message to|send message to)\\s+(.+?)\\s+" +
+                "(?:on|via|in)\\s+whatsapp\\s*(?:that|saying|ki|ke|:)?\\s*(.+)$",
+            // "send papa a whatsapp saying ..."
+            "^(?:send|write)\\s+(.+?)\\s+a\\s+whatsapp\\s+" +
+                "(?:message\\s+)?(?:that|saying|ki|ke|:)\\s*(.+)$",
+            // "papa ko whatsapp par message bhejo ki ..." / "... bhej do ..."
+            "^(.+?)\\s+ko\\s+(?:whatsapp|wa)\\s+(?:par|pe|per|me|se)?\\s*" +
+                "(?:message|msg|text)?\\s*(?:bhej(?:o| do)?|kar(?:o| do)?|kardo)\\s*" +
+                "(?:ki|ke|that|jo)?\\s*(.+)$",
+        )
+        for (rx in patterns) {
+            val m = Regex(rx).find(cmd) ?: continue
+            val who = m.groupValues[1].trim().trim('.', '!', ',')
+            val body = m.groupValues[2].trim().trim('.', '!', ',')
+            if (who.isNotEmpty() && body.isNotEmpty()) return who to body
+        }
         return null
     }
 
@@ -760,6 +771,10 @@ class Actions(
             return "I need to look at your contacts to find $who. Allow contacts above and ask me again."
         }
         val saved = allContacts()
+        if (saved.isEmpty()) {
+            return "I can see the contacts permission but the phone gave me an empty list, " +
+                "so I can't look $who up. Check that the number is saved in Contacts, then ask again."
+        }
         val options = Suggest.closest(who, saved.map { it.name })
             .mapNotNull { name -> saved.firstOrNull { it.name.equals(name, ignoreCase = true) } }
         if (options.isEmpty()) {

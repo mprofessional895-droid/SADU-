@@ -215,20 +215,149 @@ object CloudReply {
     /** The full text of a non-streaming reply, or "" when the shape is unfamiliar. */
     fun text(provider: CloudProvider, body: String): String = try {
         val json = JSONObject(body)
-        when (provider) {
+        val said = when (provider) {
             CloudProvider.Compatible ->
-                json.optJSONArray("choices")
-                    ?.optJSONObject(0)
-                    ?.optJSONObject("message")
-                    ?.optString("content")
-                    .orEmpty()
+                str(
+                    json.optJSONArray("choices")?.optJSONObject(0)
+                        ?.optJSONObject("message")?.opt("content"),
+                )
 
             CloudProvider.Anthropic -> joinTexts(json.optJSONArray("content"), "text")
 
             CloudProvider.Gemini -> geminiText(json)
         }
+        // A model that called a function usually says nothing alongside it.
+        if (said.isNotBlank()) said else asToolJson(calls(provider, json))
     } catch (_: Throwable) {
         ""
+
+    }
+
+    /** One function call, however the provider delivered it. */
+    data class Call(
+        val index: Int = -1,
+        val name: String = "",
+        val arguments: String = "",
+    ) {
+        /** Streaming pieces carry a name once and the arguments in slices. */
+        fun merge(next: Call) = Call(
+            index = index,
+            name = if (name.isBlank()) next.name else name,
+            arguments = arguments + next.arguments,
+        )
+    }
+
+    /** The calls in a whole (non-streaming) reply. */
+    fun calls(provider: CloudProvider, json: JSONObject): List<Call> = try {
+        when (provider) {
+            CloudProvider.Compatible -> {
+                val list = json.optJSONArray("choices")?.optJSONObject(0)
+                    ?.optJSONObject("message")?.optJSONArray("tool_calls")
+                (0 until (list?.length() ?: 0)).mapNotNull { i ->
+                    val fn = list?.optJSONObject(i)?.optJSONObject("function") ?: return@mapNotNull null
+                    val name = fn.optString("name")
+                    if (name.isBlank()) null
+                    else Call(i, name, fn.optString("arguments"))
+                }
+            }
+
+            CloudProvider.Anthropic ->
+                anthropicBlocks(json.optJSONArray("content"))
+                    .filter { it.type == "tool_use" }
+                    .mapIndexed { i, block -> Call(i, block.name, block.args) }
+
+            CloudProvider.Gemini ->
+                geminiCalls(json).mapIndexed { i, call -> Call(i, call.name, call.arguments) }
+        }
+    } catch (_: Throwable) {
+        emptyList()
+    }
+
+    /** A function-call fragment inside one streamed chunk, or null. */
+    fun toolDelta(provider: CloudProvider, data: String): Call? =
+        runCatching { toolDeltaOrThrow(provider, data) }.getOrNull()
+
+    private fun toolDeltaOrThrow(provider: CloudProvider, data: String): Call? {
+        val json = JSONObject(data)
+        return when (provider) {
+            CloudProvider.Compatible -> {
+                val calls = json.optJSONArray("choices")?.optJSONObject(0)
+                    ?.optJSONObject("delta")?.optJSONArray("tool_calls")
+                val first = calls?.optJSONObject(0) ?: return null
+                Call(
+                    index = first.optInt("index", -1),
+                    name = first.optJSONObject("function")?.optString("name").orEmpty(),
+                    arguments = first.optJSONObject("function")?.optString("arguments").orEmpty(),
+                )
+            }
+
+            CloudProvider.Anthropic -> when (json.optString("type")) {
+                // The name and id come once, the arguments follow as partial JSON.
+                "content_block_start" -> {
+                    val block = json.optJSONObject("content_block")
+                    if (block?.optString("type") != "tool_use") null
+                    else Call(json.optInt("index", -1), block.optString("name"), "")
+                }
+
+                "content_block_delta" -> {
+                    val delta = json.optJSONObject("delta")
+                    if (delta?.optString("type") != "input_json_delta") null
+                    else Call(
+                        json.optInt("index", -1),
+                        "",
+                        delta.optString("partial_json").orEmpty(),
+                    )
+                }
+
+                else -> null
+            }
+
+            CloudProvider.Gemini -> geminiCalls(json).firstOrNull()
+        }
+    }
+
+    /**
+     * The tool menu tells a model to answer with `{"tool":...}`; a provider's own function
+     * call has to become that same shape, so the rest of the app never learns the difference.
+     */
+    fun asToolJson(calls: List<Call>): String {
+        val call = calls.firstOrNull { it.name.isNotBlank() } ?: return ""
+        val args = call.arguments.trim()
+        val safe = if (args.startsWith("{") && args.endsWith("}")) args else "{}"
+        return "{\"tool\":\"${call.name}\",\"args\":$safe}"
+    }
+
+    private data class Block(val type: String, val name: String, val args: String)
+
+    private fun anthropicBlocks(content: JSONArray?): List<Block> {
+        val out = ArrayList<Block>()
+        for (i in 0 until (content?.length() ?: 0)) {
+            val b = content?.optJSONObject(i) ?: continue
+            out.add(
+                Block(
+                    b.optString("type"),
+                    b.optString("name"),
+                    b.optJSONObject("input")?.toString().orEmpty(),
+                ),
+            )
+        }
+        return out
+    }
+
+    private fun geminiCalls(json: JSONObject): List<Call> {
+        val out = ArrayList<Call>()
+        val list = json.optJSONArray("candidates") ?: return out
+        for (i in 0 until list.length()) {
+            val parts = list.optJSONObject(i)?.optJSONObject("content")?.optJSONArray("parts")
+                ?: continue
+            for (p in 0 until parts.length()) {
+                val fn = parts.optJSONObject(p)?.optJSONObject("functionCall") ?: continue
+                val name = fn.optString("name")
+                if (name.isBlank()) continue
+                out.add(Call(-1, name, fn.optJSONObject("args")?.toString().orEmpty()))
+            }
+        }
+        return out
     }
 
     /**
@@ -260,16 +389,18 @@ object CloudReply {
         false
     }
 
+    /** A field that may be JSON null, which optString would turn into the word "null". */
+    private fun str(v: Any?): String = if (v == null || v == JSONObject.NULL) "" else v.toString()
+
     /** The text in one streamed chunk, or null when the chunk carries none. */
     fun delta(provider: CloudProvider, data: String): String? = try {
         val json = JSONObject(data)
         val out = when (provider) {
             CloudProvider.Compatible ->
-                json.optJSONArray("choices")
-                    ?.optJSONObject(0)
-                    ?.optJSONObject("delta")
-                    ?.optString("content")
-                    .orEmpty()
+                str(
+                    json.optJSONArray("choices")?.optJSONObject(0)
+                        ?.optJSONObject("delta")?.opt("content"),
+                )
 
             CloudProvider.Anthropic ->
                 if (json.optString("type") == "content_block_delta") {
@@ -405,15 +536,27 @@ class CloudBrain(private val config: () -> CloudConfig) : Brain {
         onDelta: (String) -> Unit,
     ): String {
         val out = StringBuilder()
+        // A provider's native function call arrives in pieces (OpenAI streams the name first
+        // and the arguments a few characters at a time), so it is merged by index and only
+        // turned into text once the stream ends.
+        val calls = LinkedHashMap<Int, CloudReply.Call>()
+        var nextIndex = 0
         conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
             while (true) {
                 val line = reader.readLine() ?: break
                 val data = Sse.payload(line) ?: continue
                 if (CloudReply.hitTokenLimit(cfg.provider, data)) lastReplyTruncated = true
+                CloudReply.toolDelta(cfg.provider, data)?.let { piece ->
+                    val key = if (piece.index >= 0) piece.index else nextIndex++
+                    calls[key] = calls[key]?.merge(piece) ?: piece
+                }
                 val delta = CloudReply.delta(cfg.provider, data) ?: continue
                 out.append(delta)
                 onDelta(delta)
             }
+        }
+        if (out.isBlank() && calls.isNotEmpty()) {
+            out.append(CloudReply.asToolJson(calls.values.toList()))
         }
         return out.toString()
     }
