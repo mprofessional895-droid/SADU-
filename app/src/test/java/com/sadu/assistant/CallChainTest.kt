@@ -64,6 +64,59 @@ class CallChainTest {
         assertTrue(answer, answer != null && answer.contains("Shubham"))
     }
 
+    @Test
+    fun twoSimilarNamesAskInsteadOfGuessing() {
+        grantContacts()
+        contacts(
+            mobile("Brijesh Vadhel", "+919876543210"),
+            mobile("Brijesh Patel", "+919876543299"),
+        )
+
+        val answer = actions.tryHandle("brijesh ko whatsapp me message karde ki hello")
+
+        assertTrue(answer, answer != null && answer.contains("More than one contact"))
+        assertTrue("both names are offered", answer!!.contains("Brijesh Vadhel"))
+        assertTrue("both names are offered", answer.contains("Brijesh Patel"))
+        assertTrue("numbers are masked", answer.contains("••••3210"))
+        assertTrue("the whole number never shows", !answer.contains("9876543210"))
+        assertNull("nothing is sent", startedIntent())
+    }
+
+    @Test
+    fun theFullNamePicksExactlyThatContact() {
+        grantContacts()
+        contacts(
+            mobile("Brijesh Vadhel", "+919876543210"),
+            mobile("Brijesh Patel", "+919876543299"),
+        )
+
+        val answer = actions.tryHandle("brijesh vadhel ko whatsapp me message karde ki hello")
+
+        assertTrue(answer, answer != null && answer.contains("Brijesh Vadhel"))
+        val intent = startedIntent()
+        assertTrue("a chat must open", intent != null)
+    }
+
+    @Test
+    fun onlyTheNameInFrontMatches() {
+        grantContacts()
+        contacts(mobile("Brijesh Vadhel", "+919876543210"))
+
+        val answer = actions.tryHandle("brijesh ko whatsapp me message karde ki hello")
+
+        assertTrue(answer, answer != null && answer.contains("Brijesh Vadhel"))
+    }
+
+    @Test
+    fun aGroupSaysWhatItNeedsWhenScreenControlIsOff() {
+        grantContacts()
+        contacts(mobile("Papa", "+919876543210"))
+
+        val answer = actions.whatsapp("boys group", "hello").display
+
+        assertTrue(answer, answer.contains("Screen control"))
+    }
+
     private fun contacts(vararg rows: Triple<String, String, Int>) {
         val provider = FakeContacts(rows.map { Triple(it.first, it.second, it.third) })
         ShadowContentResolver.registerProviderInternal(ContactsContract.AUTHORITY, provider)
@@ -303,7 +356,10 @@ class CallChainTest {
         actions.tryHandle("call sandeep")
 
         assertEquals(1, offered.size)
-        assertEquals(listOf("Sundeep", "Sandip"), offered.first())
+        assertEquals(
+            listOf("Sundeep · ••••3210", "Sandip · ••••3299"),
+            offered.first(),
+        )
     }
 
     @Test

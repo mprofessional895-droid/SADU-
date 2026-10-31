@@ -419,3 +419,17 @@ throws, and the app shows a blank screen. `ViewModelStartupTest` keeps that hone
 - There is deliberately **no** intent rule on the device: the model picks the tool, and
   `CloudReply.asToolJson` turns any native call into the `{"tool":…,"args":…}` text the existing
   loop already understands. Never add an "if the user says X then do Y" shortcut here.
+
+## Contacts, choices and groups (v0.23)
+
+- `Actions.resolve(query)` returns `Found.One` / `Found.Many` / `Found.None`: the saved name
+  exactly, then every spoken word inside the saved name, then `Relations` variants, then the
+  name without `bhai`/`bhaiya`/`bro`/`yaar`. This replaced `lookupContact`'s `LIKE %name%`,
+  which silently answered for "Brijesh" when the user said "Brijesh Vadhel".
+- `Found.Many` never guesses: `askWhich` fills `Pick`, calls `onChoices` with labels of the
+  form `"Name · ••••1234"` (`mask` keeps the last four digits only) and the screen shows the
+  chooser. `chooseName` accepts either a label or a plain name.
+- WhatsApp groups are not in `ContactsContract`, so `groupSearch` uses the accessibility
+  service: open WhatsApp, tap "search", type the name, `tap_result` (ignores editable nodes,
+  so it never taps the search field again), then type the message and stop. It runs only when
+  the target says "group"/"grp", and needs Screen control; otherwise the user is told so.
