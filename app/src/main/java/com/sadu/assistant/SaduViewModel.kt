@@ -75,7 +75,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     private val tools = Tools(actions, memory, { prefs.mode })
     // Starts on whichever engine the settings point at, so a cold start and a switch agree.
     private val localBrain = SwitchableBrain(brainFor(engine))
-    private val cloudBrain = CloudBrain { cloudConfig() }
+    private val cloudBrain = CloudBrain({ tools.specs }) { cloudConfig() }
     private val router = BrainRouter(localBrain, cloudBrain) { cloudWanted() }
     private val brain: Brain = router
 

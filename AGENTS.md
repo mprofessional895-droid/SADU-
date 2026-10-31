@@ -407,3 +407,15 @@ against a stub provider over real HTTP for all three formats.
 `SaduViewModel`'s `init { refreshCloudProblem() }` writes `cloudReady`, so **that property must be
 declared above the init block**. Declared below it, the backing field is still null, the write
 throws, and the app shows a blank screen. `ViewModelStartupTest` keeps that honest.
+
+## The cloud decides, the app only declares tools (v0.22)
+
+- `CloudRequest.body(..., tools = …)` now sends the toolbox to the provider in its own shape
+  (`CloudTools.openAi` / `anthropic` / `gemini`), with `tool_choice: "auto"` for OpenAI and
+  Anthropic. Tools are included **only** when `request.mode == Mode.Control`; Chat mode declares
+  none, so a strict provider cannot answer "Tool choice is none, but model called a tool".
+- `CloudBrain` takes the toolbox as `toolSpecs: () -> List<ToolSpec>` (first parameter, config
+  last so `CloudBrain { cfg }` still reads well); `SaduViewModel` passes `{ tools.specs }`.
+- There is deliberately **no** intent rule on the device: the model picks the tool, and
+  `CloudReply.asToolJson` turns any native call into the `{"tool":…,"args":…}` text the existing
+  loop already understands. Never add an "if the user says X then do Y" shortcut here.
