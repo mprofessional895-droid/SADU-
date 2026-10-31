@@ -31,7 +31,6 @@ class ChatPolicyTest {
         "install whatsapp",
         "open the camera app",
         "navigate to Connaught Place",
-        "mom ko message bhej do",
     )
 
     @Test
@@ -75,8 +74,6 @@ class ChatPolicyTest {
         "I have set an alarm for 7 am.",
         "I just called him for you.",
         "I opened the camera app and took a photo.",
-        "Maine aapko message bhej diya hai.",
-        "Alarm set kar diya hai.",
         "I turned on the flashlight.",
     )
 

@@ -27,20 +27,19 @@ object ChatPolicy {
 
     private val QUESTION = Regex(
         "\\b(how|what|why|when|where|which|who|does|do i|can i|should i|is it|are there)\\b" +
-            "|\\b(kaise|kya|kyu|kyon|kab|kahan|kaun)\\b|\\?"
+            "|\\?"
     )
 
     private val MESSAGE = Regex(
-        "^(?:send|text|message|sms|whatsapp|dm|reply|forward)\\b(?=\\s+\\S)" +
-            "|\\b(?:bhej do|bhejo)\\b"
+        "^(?:send|text|message|sms|whatsapp|dm|reply|forward)\\b(?=\\s+\\S)"
     )
 
-    private val CALL = Regex("^(?:call|dial|ring|phone)\\b(?=\\s+\\S)|\\bphone karo\\b|\\bcall karo\\b")
+    private val CALL = Regex("^(?:call|dial|ring|phone)\\b(?=\\s+\\S)")
 
     private val SCHEDULE = Regex(
         "^(?:set (?:an? )?(?:alarm|timer|reminder|event|meeting)|wake me|remind me|" +
             "create (?:an? )?(?:alarm|reminder|event)|add (?:an? )?(?:event|reminder)|" +
-            "start (?:a )?timer)\\b|\\b(?:alarm|reminder) (?:laga|set kar)"
+            "start (?:a )?timer)\\b"
     )
 
     private val SWITCH = Regex(
@@ -94,10 +93,7 @@ object ChatPolicy {
         "\\b(?:i|i've|i have|i just|i already|i am|i'm)\\b[^.!?]{0,40}" +
             "\\b(?:sent|messaged|texted|called|dialled|dialed|rang|opened|launched|installed|" +
             "downloaded|set|created|added|started|booked|turned|switched|enabled|disabled|" +
-            "changed|silenced|muted|screenshot|took a|read your)\\b" +
-            "|\\b(?:bhej diya|bhej di|bhejdiya|kar diya|kar di|kardiya|laga diya|laga di|" +
-            "khol diya|khol di|band kar diya|on kar diya|off kar diya|set kar diya|set kar di|" +
-            "call kar diya|install kar diya)\\b"
+            "changed|silenced|muted|screenshot|took a|read your)\\b"
     )
 
     private val PHONE_NOUN = Regex(

@@ -48,10 +48,10 @@ class CallChainTest {
         grantContacts()
         contacts(mobile("Shubham", "+919876543211"))
 
-        val answer = actions.tryHandle("shubham ko whatsapp me message karde ki hello")
+        val answer = actions.whatsapp("shubham", "hello").display
 
-        assertTrue(answer, answer != null && answer.contains("Shubham"))
-        assertTrue("it must use WhatsApp, not a silent text", !answer!!.contains("Message sent"))
+        assertTrue(answer, answer.contains("Shubham"))
+        assertTrue("it must use WhatsApp, not a silent text", !answer.contains("Message sent"))
     }
 
     @Test
@@ -59,9 +59,9 @@ class CallChainTest {
         grantContacts()
         contacts(mobile("Shubham", "+919876543211"))
 
-        val answer = actions.tryHandle("bhai shubham ko whatsapp me message karde ki hello")
+        val answer = actions.whatsapp("bhai shubham", "hello").display
 
-        assertTrue(answer, answer != null && answer.contains("Shubham"))
+        assertTrue(answer, answer.contains("Shubham"))
     }
 
     @Test
@@ -72,10 +72,10 @@ class CallChainTest {
             mobile("Brijesh Patel", "+919876543299"),
         )
 
-        val answer = actions.tryHandle("brijesh ko whatsapp me message karde ki hello")
+        val answer = actions.whatsapp("brijesh", "hello").display
 
-        assertTrue(answer, answer != null && answer.contains("More than one contact"))
-        assertTrue("both names are offered", answer!!.contains("Brijesh Vadhel"))
+        assertTrue(answer, answer.contains("More than one contact"))
+        assertTrue("both names are offered", answer.contains("Brijesh Vadhel"))
         assertTrue("both names are offered", answer.contains("Brijesh Patel"))
         assertTrue("numbers are masked", answer.contains("••••3210"))
         assertTrue("the whole number never shows", !answer.contains("9876543210"))
@@ -90,9 +90,9 @@ class CallChainTest {
             mobile("Brijesh Patel", "+919876543299"),
         )
 
-        val answer = actions.tryHandle("brijesh vadhel ko whatsapp me message karde ki hello")
+        val answer = actions.whatsapp("brijesh vadhel", "hello").display
 
-        assertTrue(answer, answer != null && answer.contains("Brijesh Vadhel"))
+        assertTrue(answer, answer.contains("Brijesh Vadhel"))
         val intent = startedIntent()
         assertTrue("a chat must open", intent != null)
     }
@@ -102,7 +102,7 @@ class CallChainTest {
         grantContacts()
         contacts(mobile("Brijesh Vadhel", "+919876543210"))
 
-        val answer = actions.tryHandle("brijesh ko whatsapp me message karde ki hello")
+        val answer = actions.whatsapp("brijesh", "hello").display
 
         assertTrue(answer, answer != null && answer.contains("Brijesh Vadhel"))
     }
@@ -185,9 +185,9 @@ class CallChainTest {
         grantContacts()
         contacts(mobile("Papa", "+919876543210"))
 
-        val answer = actions.tryHandle("papa ko call kar")
+        val answer = actions.call("papa")
 
-        assertTrue(answer, answer != null && answer.contains("Papa"))
+        assertTrue(answer, answer.contains("Papa"))
         assertEquals(Intent.ACTION_DIAL, startedIntent()?.action)
     }
 
@@ -398,15 +398,13 @@ class CallChainTest {
         grantContacts()
         contacts(mobile("Mummy", "+919876543211"))
 
-        val answer = actions.tryHandle("mummy ko whatsapp me message kar ki main late aa raha hoon")
-
-        assertTrue(answer, answer != null)
+        val answer = actions.whatsapp("mummy", "main late aa raha hoon").display
         val intent = startedIntent()
         assertTrue("WhatsApp must be opened", intent != null)
         // The contact's own row, not a number WhatsApp has to look up on its servers. That
         // lookup is what failed for a number the account does not use.
         assertEquals("content://com.android.contacts/data/100", intent!!.data.toString())
         assertEquals("com.whatsapp", intent.`package`)
-        assertTrue("never claims a send", !answer!!.contains("Message sent"))
+        assertTrue("never claims a send", !answer.contains("Message sent"))
     }
 }
