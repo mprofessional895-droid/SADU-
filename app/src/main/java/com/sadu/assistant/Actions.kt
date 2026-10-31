@@ -576,7 +576,7 @@ class Actions(
         }
         val msg = Regex(
             "^(.+?)\\s+ko\\s+(?:whatsapp|wa|message|msg|text|sms)\\s*(?:me|par|pe|per)?\\s*" +
-                "(?:message|msg|text|sms)?\\s*(?:kar|karo|kardo|kar do|bhej do|bhejo|bhej)" +
+                "(?:message|msg|text|sms)?\\s*(?:kar de|karde|kar do|kardo|karo|kar|bhej do|bhejdo|bhejo|bhej de|bhejde|bhej)" +
                 "\\s*(?:ki|ke|jo|that)\\s+(.+)$"
         ).find(t)
         if (msg != null) {
@@ -625,7 +625,7 @@ class Actions(
                 "(?:message\\s+)?(?:that|saying|ki|ke|:)\\s*(.+)$",
             // "papa ko whatsapp par message bhejo ki ..." / "... bhej do ..."
             "^(.+?)\\s+ko\\s+(?:whatsapp|wa)\\s+(?:par|pe|per|me|se)?\\s*" +
-                "(?:message|msg|text)?\\s*(?:bhej(?:o| do)?|kar(?:o| do)?|kardo)\\s*" +
+                "(?:message|msg|text)?\\s*(?:bhej(?:o| do| de|do|de)?|kar(?:o| do| de|de)?|kardo)\\s*" +
                 "(?:ki|ke|that|jo)?\\s*(.+)$",
         )
         for (rx in patterns) {
@@ -686,6 +686,11 @@ class Actions(
         for (variant in Relations.variants(q)) {
             if (variant.equals(q, ignoreCase = true)) continue
             lookupContact(variant)?.let { return it }
+        }
+        // "bhai shubham ko message karde" - the address word is not part of the name.
+        val bare = q.replace(Regex("^(?:bhaiya|bhai|bro|yaar)\\s+", RegexOption.IGNORE_CASE), "").trim()
+        if (bare.isNotEmpty() && !bare.equals(q, ignoreCase = true)) {
+            lookupContact(bare)?.let { return it }
         }
         return null
     }

@@ -389,3 +389,21 @@ against a stub provider over real HTTP for all three formats.
   of nagging for a `.task` file. `SettingsScreen` hides its model note in the same case.
 - `notReady()` still names the three states: no brain at all (cloud off + no file), a cloud that
   is on but misconfigured (`brainProblem()`), and a cloud call that failed (`brainFailure()`).
+
+## Control mode never falls back to the on-device model (v0.21)
+
+- `BrainRouter.generateStream` now throws `IOException("Cloud model failed: <reason>")` when a
+  cloud call fails **and** `request.mode == Mode.Control`. A chat that half-works is worse than
+  a straight failure: the user must never be told a phone action happened by a local model that
+  did not have the cloud's tool call. Chat mode still falls back to the device.
+- The "local model not ready" path and a local `IllegalStateException` reuse the same wording, so
+  "Model is not loaded yet" can no longer surface while a cloud model is connected.
+- `Assistant.afterFailure(text, e)` replaces an error with what actually ran (`steps.summary()`)
+  when the model fails part-way through a tool chain; the two unguarded `ask(...)` calls in the
+  loop return it instead of throwing.
+
+## Start-up order matters (v0.21)
+
+`SaduViewModel`'s `init { refreshCloudProblem() }` writes `cloudReady`, so **that property must be
+declared above the init block**. Declared below it, the backing field is still null, the write
+throws, and the app shows a blank screen. `ViewModelStartupTest` keeps that honest.

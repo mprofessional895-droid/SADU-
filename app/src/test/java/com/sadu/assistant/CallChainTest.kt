@@ -43,6 +43,27 @@ class CallChainTest {
         actions.onNeedPermission = { askedFor = it }
     }
 
+    @Test
+    fun theKardeWordOrderFindsTheContactAndOpensWhatsApp() {
+        grantContacts()
+        contacts(mobile("Shubham", "+919876543211"))
+
+        val answer = actions.tryHandle("shubham ko whatsapp me message karde ki hello")
+
+        assertTrue(answer, answer != null && answer.contains("Shubham"))
+        assertTrue("it must use WhatsApp, not a silent text", !answer!!.contains("Message sent"))
+    }
+
+    @Test
+    fun aBhaiInFrontOfTheNameIsNotPartOfTheName() {
+        grantContacts()
+        contacts(mobile("Shubham", "+919876543211"))
+
+        val answer = actions.tryHandle("bhai shubham ko whatsapp me message karde ki hello")
+
+        assertTrue(answer, answer != null && answer.contains("Shubham"))
+    }
+
     private fun contacts(vararg rows: Triple<String, String, Int>) {
         val provider = FakeContacts(rows.map { Triple(it.first, it.second, it.third) })
         ShadowContentResolver.registerProviderInternal(ContactsContract.AUTHORITY, provider)

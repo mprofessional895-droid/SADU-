@@ -1,5 +1,6 @@
 package com.sadu.assistant.brain
 
+import com.sadu.assistant.Mode
 import java.io.IOException
 
 /**
@@ -46,13 +47,26 @@ class BrainRouter(
                 return reply
             } catch (e: Throwable) {
                 lastFallback = reason(e)
+                // Control mode never drops to the on-device model: a half-working answer
+                // about a phone action is worse than a straight failure the user can read.
+                if (request.mode == Mode.Control) {
+                    throw IOException("Cloud model failed: $lastFallback")
+                }
             }
         }
         if (!local.isReady) {
-            val err = lastFallback ?: "Cloud model failed and no on-device model is loaded."
+            val err = lastFallback?.let { "Cloud model failed: $it" }
+                ?: "Cloud model failed and no on-device model is loaded."
             throw IOException(err)
         }
-        val reply = local.generateStream(request, onDelta)
+        val reply = try {
+            local.generateStream(request, onDelta)
+        } catch (e: IllegalStateException) {
+            throw IOException(
+                lastFallback?.let { "Cloud model failed: $it (and no on-device model is loaded)" }
+                    ?: e.message
+            )
+        }
         lastUsed = local.name
         lastReplyTruncated = local.lastReplyTruncated
         return reply
