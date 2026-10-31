@@ -121,7 +121,7 @@ class CloudCanControlLiveTest {
             brain = cloud,
             actions = actions,
             memory = memory,
-            tools = Tools(actions, memory, { prefs.mode }, { prefs.riskyControls }),
+            tools = Tools(actions, memory, { prefs.mode }),
             language = { prefs.language },
             mode = { prefs.mode },
             contextTokens = { prefs.contextTokens },
@@ -131,7 +131,6 @@ class CloudCanControlLiveTest {
             webAnswers = { false },
             internet = { false },
             fetch = { "" },
-            riskyAllowed = { prefs.riskyControls },
             brainProblem = { null },
         )
         return assistant to memory
@@ -142,7 +141,6 @@ class CloudCanControlLiveTest {
         ctx = ApplicationProvider.getApplicationContext()
         prefs = Prefs(ctx)
         prefs.mode = Mode.Control
-        prefs.riskyControls = false
         prefs.internetEnabled = false
         prefs.cloudEnabled = true
         prefs.cloudProvider = CloudProvider.Compatible

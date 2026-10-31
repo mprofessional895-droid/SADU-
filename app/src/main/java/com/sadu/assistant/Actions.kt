@@ -101,7 +101,6 @@ class Actions(
             }
         }
         if (t == "forget everything" || t == "forget all" || t == "clear your memory") {
-            if (!prefs.riskyControls) return ToolPolicy.paused("Forgetting what I know about you")
             memory.clear()
             return "Done. I've forgotten everything about you."
         }
@@ -400,7 +399,6 @@ class Actions(
     }
 
     fun call(who: String): String {
-        if (!prefs.riskyControls) return ToolPolicy.paused("Calling someone")
         val hit = findContact(who) ?: return contactMiss(who, What.Call, "")
         return callContact(hit)
     }
@@ -420,7 +418,6 @@ class Actions(
     }
 
     fun sendSms(who: String, body: String): String {
-        if (!prefs.riskyControls) return ToolPolicy.paused("Sending a message")
         if (body.isBlank()) return "What should the message to $who say?"
         val hit = findContact(who.trim()) ?: return contactMiss(who.trim(), What.Message, body)
         val canSend = ctx.checkSelfPermission(Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
@@ -451,7 +448,6 @@ class Actions(
      * accessibility trick is used to press a button inside another app.
      */
     fun whatsapp(who: String, body: String): ToolOutcome {
-        if (!prefs.riskyControls) return ToolOutcome(ToolPolicy.paused("Messaging someone"))
         if (body.isBlank()) return ToolOutcome("What should the message to $who say?")
         val hit = findContact(who.trim())
             ?: return ToolOutcome(contactMiss(who.trim(), What.Message, body))
@@ -541,7 +537,6 @@ class Actions(
     }
 
     fun installApp(name: String): String {
-        if (!prefs.riskyControls) return ToolPolicy.paused("Installing an app")
         if (!prefs.internetEnabled) return "Internet is off. Turn on the Internet toggle to install apps."
         val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://search?q=" + Uri.encode(name)))
         if (go(market)) return "Opening the Play Store for $name. Tap install there."
@@ -553,9 +548,6 @@ class Actions(
     }
 
     fun accessibilityAction(action: String, text: String?): String {
-        if (!prefs.riskyControls && ToolPolicy.screenRisk(action) == ToolRisk.Elevated) {
-            return ToolPolicy.paused("Tapping and typing inside other apps")
-        }
         val svc = accessibility()
             ?: return "Screen control is off. Turn on Sadu in Settings > Accessibility first."
         return svc.performAction(action, text)

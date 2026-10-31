@@ -100,7 +100,7 @@ fun HomeScreen(vm: SaduViewModel) {
         level = vm.micLevel,
         error = vm.errorText,
         answeredBy = vm.answeredBy,
-        note = if (vm.modelReady) null else vm.modelNote,
+        note = vm.statusNote,
         lastTurn = vm.lastTurn,
         mode = vm.mode,
         onMode = { vm.chooseMode(it) },

@@ -38,10 +38,8 @@ class Assistant(
     private val internet: () -> Boolean = { true },
     /** How a page is fetched. Swapped in tests so no connection is needed. */
     private val fetch: (String) -> String = WebSearch.live(),
-    /** Whether the controls that act as the user are switched on (Settings). */
-    private val riskyAllowed: () -> Boolean = { false },
-    /** Whether to prefer sending control requests directly to the model instead of rule handling. */
-    private val preferCloudForActions: () -> Boolean = { false },
+    /** Whether the cloud model is switched on and usable right now. */
+    private val cloudWanted: () -> Boolean = { false },
     /** Why the cloud brain cannot answer, when it is switched on but not set up. */
     private val brainProblem: () -> String? = { null },
 ) {
@@ -124,26 +122,24 @@ class Assistant(
             return line
         }
 
-        val bypassRules = current == Mode.Control && preferCloudForActions()
-        if (!bypassRules) {
-            try {
-                val ruled =
-                    if (current == Mode.Chat) actions.tryHandleChatMode(text)
-                    else actions.tryHandle(text)
-                ruled?.let { reply ->
-                    remember(text, reply)
-                    return reply
-                }
-            } catch (_: Throwable) {
-            }
+        // Control mode with a working cloud model hands the message straight to the model: it
+        // has the whole toolbox, so the rule layer is only the fallback for when there is no
+        // cloud model to ask. Control mode is the permission, so nothing else gates it.
+        val cloudFirst = current == Mode.Control && cloudWanted()
+        if (!cloudFirst) {
+            rulesAnswer(text, current)?.let { return it }
         }
 
-        if (!brain.isReady) return notReady(current)
+        if (!brain.isReady) {
+            if (cloudFirst) rulesAnswer(text, current)?.let { return it }
+            return notReady(current)
+        }
 
         var raw = try {
             ask(text, current, emptyList(), retry = false, onDelta)
         } catch (e: Throwable) {
-            return "Sorry, my brain hit an error: ${e.message}"
+            if (cloudFirst) rulesAnswer(text, current)?.let { return it }
+            return brainFailure(e)
         }
 
         // The model asked for a look-up itself - Control mode's web_search tool, or Chat
@@ -200,7 +196,16 @@ class Assistant(
             if (steps.size >= ToolSteps.Max) break
             // The thinking line says which step is running, so a long chain is not a blank wait.
             stage = "Step ${steps.size + 1}: ${steps.all().last().tool.replace('_', ' ')}"
-            raw = ask(text, current, steps.all(), retry = false, onDelta)
+            // A failed call mid-chain must not throw away what already ran on the phone.
+            raw = try {
+                ask(text, current, steps.all(), retry = false, onDelta)
+            } catch (_: Throwable) {
+                stage = null
+                val partial = steps.summary()
+                answeredWithModel = true
+                remember(text, partial)
+                return partial
+            }
         }
 
         // Out of steps with the model still asking for tools: read back what happened.
@@ -347,7 +352,7 @@ class Assistant(
         toolResults: List<StepRecord> = emptyList(),
         retry: Boolean = false,
     ): LlmRequest {
-        val menu = if (current == Mode.Control) tools.menu(riskyAllowed()) else ""
+        val menu = if (current == Mode.Control) tools.menu() else ""
         val instructions = Prompt.system(
             mode = current,
             facts = memory.asContext(),
@@ -358,7 +363,6 @@ class Assistant(
             extra = extraInstructions(),
             webResults = webResults,
             canSearch = current == Mode.Chat && internet() && webAnswers(),
-            riskyAllowed = riskyAllowed(),
             toolResults = toolResults.map { Steps.resultLine(it) },
             retry = retry,
         )
@@ -370,6 +374,31 @@ class Assistant(
             user = text,
             mode = current,
         )
+    }
+
+    /** The built-in rules, or null when none of them understood the message. */
+    private fun rulesAnswer(text: String, current: Mode): String? {
+        val reply = try {
+            if (current == Mode.Chat) actions.tryHandleChatMode(text) else actions.tryHandle(text)
+        } catch (_: Throwable) {
+            null
+        } ?: return null
+        remember(text, reply)
+        return reply
+    }
+
+    /** A model call that failed, said in terms of which brain it was. */
+    private fun brainFailure(e: Throwable): String {
+        val why = e.message?.trim()?.takeIf { it.isNotEmpty() }
+        brainProblem()?.let { problem ->
+            return "The cloud brain is on but cannot answer: $problem. Check your settings under Cloud brain."
+        }
+        return if (cloudWanted()) {
+            "The cloud model didn't answer" + (why?.let { " ($it)" } ?: "") +
+                ". Check the connection and the key under Cloud brain, or import a model file."
+        } else {
+            "Sorry, my brain hit an error" + (why?.let { ": $it" } ?: ".")
+        }
     }
 
     private fun notReady(current: Mode): String {

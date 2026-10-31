@@ -38,7 +38,6 @@ class CallChainTest {
         ctx = ApplicationProvider.getApplicationContext()
         prefs = Prefs(ctx)
         prefs.mode = Mode.Control
-        prefs.riskyControls = true
         prefs.directCall = false
         actions = Actions(ctx, Memory(ctx), prefs) { null }
         actions.onNeedPermission = { askedFor = it }
@@ -160,18 +159,6 @@ class CallChainTest {
 
         assertTrue(answer, answer != null && answer.contains("9876543210"))
         assertEquals(Intent.ACTION_DIAL, startedIntent()?.action)
-    }
-
-    @Test
-    fun riskyControlsOffMeansNoDialerAtAll() {
-        grantContacts()
-        contacts(mobile("Papa", "+919876543210"))
-        prefs.riskyControls = false
-
-        val answer = actions.tryHandle("call papa")
-
-        assertTrue(answer!!, answer.contains("held back"))
-        assertTrue("nothing may open", startedIntent() == null)
     }
 
     @Test

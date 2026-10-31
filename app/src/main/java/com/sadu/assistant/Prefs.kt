@@ -23,15 +23,6 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("wake", false)
         set(v) = p.edit().putBoolean("wake", v).apply()
 
-    /**
-     * The controls that act as the user: sending messages, calling, installing apps, tapping
-     * and typing inside other apps, forgetting what Sadu knows. Off by default - until it is
-     * on, Sadu may read, navigate and do reversible things, and nothing else.
-     */
-    var riskyControls: Boolean
-        get() = p.getBoolean("risky_controls", false)
-        set(v) = p.edit().putBoolean("risky_controls", v).apply()
-
     /** Ask before actually sending an SMS. Safer default. */
     var confirmSms: Boolean
         get() = p.getBoolean("confirm_sms", true)
@@ -108,11 +99,6 @@ class Prefs(ctx: Context) {
     var replyLength: ReplyLength
         get() = ReplyLength.of(p.getString("reply_length", null))
         set(v) = p.edit().putString("reply_length", v.key).apply()
-
-    /** Whether to bypass built-in rule handling in Control mode so the cloud model handles phone control actions via tools. */
-    var preferCloudForActions: Boolean
-        get() = p.getBoolean("prefer_cloud_for_actions", false)
-        set(v) = p.edit().putBoolean("prefer_cloud_for_actions", v).apply()
 
     /** How Chat mode's answers should read: no personality imposed, or a friendly one. */
     var chatStyle: ChatStyle

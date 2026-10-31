@@ -79,7 +79,6 @@ class MessagePhrasingTest {
         ctx = ApplicationProvider.getApplicationContext()
         prefs = Prefs(ctx)
         prefs.mode = Mode.Control
-        prefs.riskyControls = true
         prefs.directCall = false
         org.robolectric.Shadows
             .shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
@@ -172,7 +171,7 @@ class MessagePhrasingTest {
             brain = router,
             actions = a,
             memory = memory,
-            tools = Tools(a, memory, { prefs.mode }, { prefs.riskyControls }),
+            tools = Tools(a, memory, { prefs.mode }),
             language = { prefs.language },
             mode = { prefs.mode },
             contextTokens = { prefs.contextTokens },
@@ -182,7 +181,6 @@ class MessagePhrasingTest {
             webAnswers = { false },
             internet = { false },
             fetch = { "" },
-            riskyAllowed = { prefs.riskyControls },
             brainProblem = {
                 if (!cloudOn) null
                 else CloudConfig(
