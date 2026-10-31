@@ -1,5 +1,7 @@
 package com.sadu.assistant.brain
 
+import com.sadu.assistant.Mode
+import com.sadu.assistant.ToolSpec
 import com.sadu.assistant.Turn
 import org.json.JSONArray
 import org.json.JSONObject
@@ -141,42 +143,71 @@ object CloudRequest {
         return h
     }
 
-    fun body(cfg: CloudConfig, request: LlmRequest, stream: Boolean): String =
-        when (cfg.provider) {
-            CloudProvider.Compatible -> JSONObject()
-                .put("model", cfg.model)
-                .put("messages", roles(request))
-                .put("temperature", cfg.temperature.toDouble())
-                .put("max_tokens", cfg.maxTokens)
-                .put("stream", stream)
-                .toString()
+    fun body(
+        cfg: CloudConfig,
+        request: LlmRequest,
+        stream: Boolean,
+        tools: List<ToolSpec> = emptyList(),
+    ): String = build(cfg, request, stream, if (request.mode == Mode.Control) tools else emptyList())
+        .toString()
 
-            CloudProvider.Anthropic -> JSONObject()
-                .put("model", cfg.model)
-                .put("system", request.system)
-                .put("messages", roles(request, skipSystem = true))
-                .put("temperature", cfg.temperature.toDouble())
-                .put("max_tokens", cfg.maxTokens)
-                .put("stream", stream)
-                .toString()
+    /**
+     * The request, built once so the tools can be added where each provider expects them.
+     * [tools] is empty in Chat mode: that mode is conversation only, and a model with no
+     * tools declared cannot be rejected for calling one.
+     */
+    private fun build(
+        cfg: CloudConfig,
+        request: LlmRequest,
+        stream: Boolean,
+        tools: List<ToolSpec>,
+    ): JSONObject = when (cfg.provider) {
+        CloudProvider.Compatible -> JSONObject()
+            .put("model", cfg.model)
+            .put("messages", roles(request))
+            .put("temperature", cfg.temperature.toDouble())
+            .put("max_tokens", cfg.maxTokens)
+            .put("stream", stream)
+            .also { json ->
+                if (tools.isNotEmpty()) {
+                    json.put("tools", CloudTools.openAi(tools))
+                    json.put("tool_choice", "auto")
+                }
+            }
 
-            CloudProvider.Gemini -> JSONObject()
-                .put(
-                    "systemInstruction",
-                    JSONObject().put(
-                        "parts",
-                        JSONArray().put(JSONObject().put("text", request.system)),
-                    ),
-                )
-                .put("contents", geminiContents(request))
-                .put(
-                    "generationConfig",
-                    JSONObject()
-                        .put("temperature", cfg.temperature.toDouble())
-                        .put("maxOutputTokens", cfg.maxTokens),
-                )
-                .toString()
-        }
+        CloudProvider.Anthropic -> JSONObject()
+            .put("model", cfg.model)
+            .put("system", request.system)
+            .put("messages", roles(request, skipSystem = true))
+            .put("temperature", cfg.temperature.toDouble())
+            .put("max_tokens", cfg.maxTokens)
+            .put("stream", stream)
+            .also { json ->
+                if (tools.isNotEmpty()) {
+                    json.put("tools", CloudTools.anthropic(tools))
+                    json.put("tool_choice", JSONObject().put("type", "auto"))
+                }
+            }
+
+        CloudProvider.Gemini -> JSONObject()
+            .put(
+                "systemInstruction",
+                JSONObject().put(
+                    "parts",
+                    JSONArray().put(JSONObject().put("text", request.system)),
+                ),
+            )
+            .put("contents", geminiContents(request))
+            .put(
+                "generationConfig",
+                JSONObject()
+                    .put("temperature", cfg.temperature.toDouble())
+                    .put("maxOutputTokens", cfg.maxTokens),
+            )
+            .also { json ->
+                if (tools.isNotEmpty()) json.put("tools", CloudTools.gemini(tools))
+            }
+    }
 
     /** system + the conversation so far + the new message. */
     private fun roles(request: LlmRequest, skipSystem: Boolean = false): JSONArray {
@@ -454,7 +485,15 @@ object CloudReply {
     }
 }
 
-class CloudBrain(private val config: () -> CloudConfig) : Brain {
+class CloudBrain(
+    /** The toolbox the model may call. Declared to the provider, so the model itself decides. */
+    private val toolSpecs: () -> List<ToolSpec> = { emptyList() },
+    private val config: () -> CloudConfig,
+) : Brain {
+
+    /** Control mode is the mode that carries the phone; Chat mode declares no tools. */
+    private fun toolsFor(@Suppress("UNUSED_PARAMETER") request: LlmRequest): List<ToolSpec> =
+        toolSpecs()
 
     override val isReady: Boolean get() = config().isUsable
 
@@ -474,7 +513,7 @@ class CloudBrain(private val config: () -> CloudConfig) : Brain {
         val cfg = config()
         cfg.problem()?.let { throw IOException(it) }
         lastReplyTruncated = false
-        val body = CloudRequest.body(cfg, request, stream = false)
+        val body = CloudRequest.body(cfg, request, stream = false, tools = toolsFor(request))
         val text = post(cfg, CloudRequest.url(cfg, stream = false), body, null)
         if (text.isBlank()) throw IOException("The cloud model sent an empty reply")
         return text
@@ -484,7 +523,7 @@ class CloudBrain(private val config: () -> CloudConfig) : Brain {
         val cfg = config()
         cfg.problem()?.let { throw IOException(it) }
         lastReplyTruncated = false
-        val body = CloudRequest.body(cfg, request, stream = true)
+        val body = CloudRequest.body(cfg, request, stream = true, tools = toolsFor(request))
         val text = post(cfg, CloudRequest.url(cfg, stream = true), body, onDelta)
         // A server that ignores "stream" answers with the whole body at once.
         return if (text.isBlank()) generate(request) else text
