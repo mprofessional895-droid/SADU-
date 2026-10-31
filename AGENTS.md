@@ -443,3 +443,13 @@ throws, and the app shows a blank screen. `ViewModelStartupTest` keeps that hone
   "alarm laga" and the Hindi claim phrases ("kar diya") were removed with them.
 - The tool functions themselves (`whatsapp`, `call`, `sendSms`) are unchanged and still do the
   lookup, the chooser and the group search; only the sentence-to-tool shortcut is gone.
+
+## FunctionGemma diesele lives in one file (v0.25)
+
+- `brain/FunctionGemma.kt` holds the whole Gemma 3 tool dialect and **nothing calls it yet**:
+  `tools()` writes the developer block, `STOPS` are the marks that end a turn, `read()` parses
+  `call:name{arg:<escape>v<escape>}`, the `call("a","b")` variant and calls cut mid-value,
+  `response()` writes the trained tool-reply shape, `clean()` removes every special token and
+  `withoutLoop()` cuts a repeated `<escape>` run.
+- `handles(modelName)` is true only for a FunctionGemma file name, so wiring it in later is a
+  single branch and no ordinary `.gguf` can be affected. Tests: `FunctionGemmaTest`.
