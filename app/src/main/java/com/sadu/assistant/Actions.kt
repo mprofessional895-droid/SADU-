@@ -124,7 +124,6 @@ class Actions(
         // Hindi word order ("papa ko call kar", "mummy ko message kar ki ..."). Checked
         // before commandText, which only accepts English verb-first wording, and only when
         // a real contact is behind the name - otherwise it is conversation, not an order.
-        if (!chatOnly) hindiOrder(clean)?.let { return it }
 
         // Everything past here actually touches the phone, so only run it when the
         // message reads as a command. Otherwise hand it to the brain as conversation.
@@ -627,39 +626,6 @@ class Actions(
 
     // ------------------------------------------------------------ internals
 
-    /**
-     * "papa ko call kar", "mummy ko message kar ki main late hoon", "bhai ko whatsapp karo".
-     * Returns null when the name is not a contact, so a sentence that merely mentions
-     * someone is left to the model as conversation.
-     */
-    private fun hindiOrder(clean: String): String? {
-        val t = clean.lowercase()
-        val call = Regex(
-            "^(.+?)\\s+ko\\s+(?:call|phone|dial|ring)\\s*(?:kar|karo|kardo|kar do|lagao)?\\s*[.!]?$"
-        ).find(t)
-        if (call != null) {
-            val who = call.groupValues[1].trim()
-            if (CommandParser.isRealTarget(who)) return call(who)
-        }
-        val msg = Regex(
-            "^(.+?)\\s+ko\\s+(?:whatsapp|wa|message|msg|text|sms)\\s*(?:me|par|pe|per)?\\s*" +
-                "(?:message|msg|text|sms)?\\s*(?:kar de|karde|kar do|kardo|karo|kar|bhej do|bhejdo|bhejo|bhej de|bhejde|bhej)" +
-                "\\s*(?:ki|ke|jo|that)\\s+(.+)$"
-        ).find(t)
-        if (msg != null) {
-            val who = msg.groupValues[1].trim()
-            val body = msg.groupValues[2].trim().trim('.', '!')
-            if (CommandParser.isRealTarget(who) && body.isNotBlank()) {
-                return if (t.contains("whatsapp") || Regex("\\bwa\\b").containsMatchIn(t)) {
-                    whatsapp(who, body).display
-                } else {
-                    sendSms(who, body)
-                }
-            }
-        }
-        return null
-    }
-
     /** "whatsapp mummy that I am late", "message mummy on whatsapp saying ...". */
     /**
      * wa.me wants digits and a country code, no plus. A contact already saved as +91987...
@@ -683,17 +649,13 @@ class Actions(
     private fun whatsappOrder(cmd: String): Pair<String, String>? {
         val patterns = listOf(
             // "whatsapp papa that I am late", "whatsapp to papa saying ..."
-            "^whatsapp\\s+(?:to\\s+)?(.+?)\\s+(?:that|saying|ki|ke|:)\\s+(.+)$",
+            "^whatsapp\\s+(?:to\\s+)?(.+?)\\s+(?:that|saying|:)\\s+(.+)$",
             // "message papa on whatsapp that ..."
             "^(?:message|msg|text|send a message to|send message to)\\s+(.+?)\\s+" +
-                "(?:on|via|in)\\s+whatsapp\\s*(?:that|saying|ki|ke|:)?\\s*(.+)$",
+                "(?:on|via|in)\\s+whatsapp\\s*(?:that|saying|:)?\\s*(.+)$",
             // "send papa a whatsapp saying ..."
             "^(?:send|write)\\s+(.+?)\\s+a\\s+whatsapp\\s+" +
                 "(?:message\\s+)?(?:that|saying|ki|ke|:)\\s*(.+)$",
-            // "papa ko whatsapp par message bhejo ki ..." / "... bhej do ..."
-            "^(.+?)\\s+ko\\s+(?:whatsapp|wa)\\s+(?:par|pe|per|me|se)?\\s*" +
-                "(?:message|msg|text)?\\s*(?:bhej(?:o| do| de|do|de)?|kar(?:o| do| de|de)?|kardo)\\s*" +
-                "(?:ki|ke|that|jo)?\\s*(.+)$",
         )
         for (rx in patterns) {
             val m = Regex(rx).find(cmd) ?: continue

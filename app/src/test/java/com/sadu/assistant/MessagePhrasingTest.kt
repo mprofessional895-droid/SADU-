@@ -106,9 +106,6 @@ class MessagePhrasingTest {
             "whatsapp to shubham pando saying i am late",
             "message shubham pando on whatsapp that i am late",
             "send shubham pando a whatsapp saying i am late",
-            "shubham pando ko whatsapp par message bhejo ki main late hoon",
-            "shubham pando ko whatsapp me message kar ki main late hoon",
-            "shubham pando ko call kar",
             "call shubham pando",
         )
         for (s in sentences) {

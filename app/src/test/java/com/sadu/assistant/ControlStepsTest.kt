@@ -180,19 +180,14 @@ class ControlStepsTest {
     }
 
     @Test
-    fun aHindiOrderAlwaysGetsAStraightAnswer() {
-        // Without contacts, "papa ko call kar" must still answer: asking for the permission
-        // beats sliding silently into conversation, which is what made calling look broken.
+    fun aHindiSentenceGoesToTheModelAndIsNotGuessed() {
+        // The device no longer carries a phrase table for Hindi orders: the model reads the
+        // sentence and decides. Nothing on the phone may happen from the text alone.
         val brain = ScriptedBrain(listOf("Who is Papa?"))
         val sut = assistant(brain)
         val answer = sut.respond("papa ko call kar")
 
         assertFalse("must not claim it called anyone", answer.contains("Calling Papa"))
-        assertTrue(
-            "it has to say what is missing: contacts, or the name",
-            answer.contains("contacts") || answer.contains("couldn't find") ||
-                answer.contains("held back")
-        )
         assertTrue("no phone action was recorded", sut.lastSteps().isEmpty())
     }
 

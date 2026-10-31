@@ -433,3 +433,13 @@ throws, and the app shows a blank screen. `ViewModelStartupTest` keeps that hone
   service: open WhatsApp, tap "search", type the name, `tap_result` (ignores editable nodes,
   so it never taps the search field again), then type the message and stop. It runs only when
   the target says "group"/"grp", and needs Screen control; otherwise the user is told so.
+
+## No phrase table on the device (v0.24)
+
+- `hindiOrder` is gone, and `whatsappOrder` no longer carries a Hinglish pattern. The verb
+  tables ("karde / kar do / bhejo ...") were a device-side intent guess and are exactly what
+  the project must not have: the model reads the sentence and picks the tool.
+- `ChatPolicy` keeps English-only detectors. Its Hindi question words, "bhejo", "call karo",
+  "alarm laga" and the Hindi claim phrases ("kar diya") were removed with them.
+- The tool functions themselves (`whatsapp`, `call`, `sendSms`) are unchanged and still do the
+  lookup, the chooser and the group search; only the sentence-to-tool shortcut is gone.
