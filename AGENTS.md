@@ -469,3 +469,19 @@ and this command set; harness is `tools/functiongemma_eval.py`.
 - `<escape>`/`<start_function_call>` are added tokens with `special: false` in the tokenizer,
   which is why they decode as text; `<end_function_call>` is not an EOS either, so a stop
   string, not the tokenizer, has to end the turn.
+
+## Fast local turns: prefix cache, shaped grammar, hard stop (v0.27)
+
+- `llama_jni.cpp` keeps `Session::cache`, every token already in the KV cache (prompt + answer).
+  A turn finds the shared prefix, rewinds memory to it and decodes only the tail, so a short
+  follow-up no longer pays for the whole tool block. The prompt tail is decoded with an explicit
+  `llama_batch` (hand-written positions), because a batch starting at 0 after a rewind is wrong.
+- `nativeGenerate` takes a grammar string; it is added as the first sampler. A grammar the build
+  cannot parse is dropped, never fatal.
+- `ToolGrammar.forTools(specs)` writes the GBNF: only real tool names, only real keys, value
+  `<escape>...<escape>` with no `<`, ending on `<end_function_call>`. Model still chooses.
+- `StopMarks` cuts a turn at the first stop mark, holding back the tail so a mark split across
+  pieces is still caught; `LlamaEngine.generateShaped` cancels the engine the moment it lands.
+- The workspace APK is built with `-I /tmp/skip-native.gradle` because this box has a 4 GB cgroup
+  and the llama.cpp build dies in it. The C++ was verified with `clang++ -fsyntax-only` against
+  the fetched llama.cpp headers; the .so itself has to be built on a machine with more memory.
