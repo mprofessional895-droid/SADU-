@@ -29,6 +29,9 @@ object Ink {
 
     /** Only used for hairlines that need to sit on the elevated surfaces. */
     val BorderSoft = Color(0xFF1F1F1F)
+
+    /** Light for the ambient field and the orb's halo - brighter than plain white on black. */
+    val Glow = Color(0xFFD8E4FF)
 }
 
 object Dimens {
