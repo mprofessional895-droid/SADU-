@@ -92,4 +92,35 @@ class CloudRequestTest {
         assertTrue(openAi.isUsable)
         assertEquals(CloudProvider.Compatible.defaultBase, openAi.copy(baseUrl = "  ").base)
     }
+
+    /** The exact setup the user reported: a service root, not a method endpoint. */
+    @Test
+    fun theReportedGeminiSetupBuildsTheGenerateContentPaths() {
+        val cfg = openAi.copy(
+            provider = CloudProvider.Gemini,
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta",
+            model = "gemini-3.8-flash",
+        )
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse",
+            CloudRequest.url(cfg, stream = true),
+        )
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+            CloudRequest.url(cfg, stream = false),
+        )
+        // A base that already names the method is left alone rather than doubled up.
+        val full = cfg.copy(
+            baseUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+        )
+        assertEquals(full.base, CloudRequest.url(full, stream = false))
+    }
+
+    @Test
+    fun aGeminiRequestCarriesTheApiKeyInItsOwnHeader() {
+        val headers = CloudRequest.headers(gemini, stream = true)
+        assertEquals("sk-secret", headers["x-goog-api-key"])
+        assertFalse(headers.containsKey("Authorization"))
+        assertEquals("text/event-stream", headers["Accept"])
+    }
 }

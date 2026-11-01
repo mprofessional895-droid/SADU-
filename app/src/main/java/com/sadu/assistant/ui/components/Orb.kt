@@ -117,11 +117,11 @@ private fun DrawScope.drawOrb(
     val moving = state == AiState.Listening || state == AiState.Speaking || state == AiState.Processing
     val centre = Offset(cx, cy)
 
-    drawCircle(color = Ink.Text.copy(alpha = 0.016f), radius = r, center = centre)
+    drawCircle(color = Ink.Glow.copy(alpha = 0.05f), radius = r, center = centre)
 
     rotate(degrees = spin * 57.29578f, pivot = centre) {
         drawCircle(
-            color = Ink.Border.copy(alpha = if (moving) 0.95f else 0.7f),
+            color = Ink.Border.copy(alpha = if (moving) 1f else 0.85f),
             radius = r,
             center = centre,
             style = Stroke(
@@ -133,7 +133,7 @@ private fun DrawScope.drawOrb(
 
     val ringR = r * 0.86f
     drawCircle(
-        color = Ink.Text.copy(alpha = if (moving) 0.15f else 0.09f),
+        color = Ink.Text.copy(alpha = if (moving) 0.30f else 0.18f),
         radius = ringR,
         center = centre,
         style = Stroke(width = 1f),
@@ -169,7 +169,7 @@ private fun DrawScope.drawOrb(
         for (k in 0..1) {
             val p = (ripple + k * 0.5f) % 1f
             drawCircle(
-                color = Ink.Text.copy(alpha = 0.15f * (1f - p)),
+                color = Ink.Glow.copy(alpha = 0.34f * (1f - p)),
                 radius = r * (0.60f + 0.36f * p),
                 center = centre,
                 style = Stroke(width = 1.2f),
@@ -179,9 +179,9 @@ private fun DrawScope.drawOrb(
 
     val coreR = r * 0.50f
     val coreAlpha = when {
-        state == AiState.Error -> 0.30f
-        state == AiState.Processing -> 0.95f
-        else -> 0.80f
+        state == AiState.Error -> 0.45f
+        state == AiState.Processing -> 1f
+        else -> 0.88f
     }
     // Off-centre highlight instead of a glow: gives the sphere depth, stays monochrome.
     drawCircle(
@@ -198,7 +198,7 @@ private fun DrawScope.drawOrb(
         center = centre,
     )
     drawCircle(
-        color = Ink.Text.copy(alpha = 0.20f),
+        color = Ink.Glow.copy(alpha = 0.34f),
         radius = coreR,
         center = centre,
         style = Stroke(width = 1f),
@@ -225,7 +225,7 @@ private fun DrawScope.drawOrb(
             }
         }
         drawCircle(
-            color = Ink.Text.copy(alpha = 0.10f + 0.30f * level),
+            color = Ink.Glow.copy(alpha = 0.20f + 0.45f * level),
             radius = inner + r * 0.05f * level,
             center = centre,
             style = Stroke(width = 1.2f),

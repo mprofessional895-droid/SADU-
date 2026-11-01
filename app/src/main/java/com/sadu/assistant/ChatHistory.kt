@@ -11,6 +11,22 @@ data class ChatMsg(
     val fromUser: Boolean,
     val id: Long = System.nanoTime(),
     val at: Long = System.currentTimeMillis(),
+    /** What the model thought before answering, when it shared it. */
+    val thinking: String? = null,
+    /** When each phase of this turn happened, if it was measured. */
+    val stats: TurnStats? = null,
+)
+
+/**
+ * The timings Sadu can honestly report for one answer: how long the model read the prompt,
+ * how long it thought, how long until its first word, and how fast it wrote.
+ * Any value that was not measured stays null rather than showing a made-up number.
+ */
+data class TurnStats(
+    val thinkingMs: Long? = null,
+    val promptMs: Long? = null,
+    val ttftMs: Long? = null,
+    val genTokS: Double? = null,
 )
 
 /** One saved conversation. */
@@ -19,6 +35,7 @@ data class ChatSession(
     val title: String,
     val createdAt: Long,
     val messages: List<ChatMsg>,
+
     /** The mode this conversation was started in - shown as a tag in the list. */
     val mode: Mode = Mode.Default,
 ) {
@@ -42,6 +59,20 @@ class ChatHistory(private val ctx: Context) {
 
     private val file: File get() = File(ctx.filesDir, "chats.json")
 
+    private fun readStats(m: JSONObject): TurnStats? {
+        val tm = m.optLong("tm", -1L)
+        val pm = m.optLong("pm", -1L)
+        val tt = m.optLong("tt", -1L)
+        val gs = m.optDouble("gs", -1.0)
+        if (tm < 0 && pm < 0 && tt < 0 && gs <= 0) return null
+        return TurnStats(
+            thinkingMs = tm.takeIf { it >= 0 },
+            promptMs = pm.takeIf { it >= 0 },
+            ttftMs = tt.takeIf { it >= 0 },
+            genTokS = gs.takeIf { it > 0 },
+        )
+    }
+
     fun load(): List<ChatSession> = try {
         if (!file.exists()) emptyList() else {
             val root = JSONArray(file.readText())
@@ -62,7 +93,12 @@ class ChatHistory(private val ctx: Context) {
                             .put("t", m.text)
                             .put("u", m.fromUser)
                             .put("i", m.id)
-                            .put("at", m.at),
+                            .put("at", m.at)
+                            .put("th", m.thinking.orEmpty())
+                            .put("tm", m.stats?.thinkingMs ?: -1L)
+                            .put("pm", m.stats?.promptMs ?: -1L)
+                            .put("tt", m.stats?.ttftMs ?: -1L)
+                            .put("gs", m.stats?.genTokS ?: -1.0),
                     )
                 }
                 root.put(
@@ -95,6 +131,8 @@ class ChatHistory(private val ctx: Context) {
                 id = m.optLong("i", System.nanoTime()),
                 // Older files had no timestamp; the conversation start is the best guess.
                 at = m.optLong("at", created),
+                thinking = m.optString("th").takeIf { it.isNotBlank() },
+                stats = readStats(m),
             )
         }
         return ChatSession(

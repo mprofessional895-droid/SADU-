@@ -9,13 +9,45 @@ import kotlin.math.ceil
  * end up here, so a reply always arrives at the same calm speed instead of appearing all
  * at once or in jagged bursts.
  */
+/**
+ * When each part of one answer happened, measured on the phone's clock.
+ *
+ * Thinking time is not the same as waiting time: a model can think for four seconds and then
+ * write quickly, and the reader should be able to see which of the two is slow.
+ */
+class TurnClock(private val clock: () -> Long = { System.currentTimeMillis() }) {
+
+    private val start = clock()
+    private var firstTokenAt: Long? = null
+    private var thoughtEndedAt: Long? = null
+    private var endedAt: Long? = null
+
+    fun firstToken() {
+        if (firstTokenAt == null) firstTokenAt = clock()
+    }
+
+    fun thoughtDone() {
+        if (thoughtEndedAt == null) thoughtEndedAt = clock()
+    }
+
+    fun finish() {
+        endedAt = clock()
+    }
+
+    fun ttftMs(): Long? = firstTokenAt?.let { it - start }
+
+    fun thinkingMs(): Long? = thoughtEndedAt?.let { it - start }
+
+    fun totalMs(): Long = (endedAt ?: clock()) - start
+}
+
 object Pacer {
 
     /** Milliseconds between ticks. Slow enough to read, fast enough not to feel stuck. */
-    const val Tick = 24
+    const val Tick = 16
 
     /** Roughly how many ticks an answer should take once all of it is available. */
-    private const val Ticks = 44
+    private const val Ticks = 70
 
     fun next(shown: Int, available: Int): Int {
         if (available <= shown) return shown

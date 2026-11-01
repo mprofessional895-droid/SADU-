@@ -76,7 +76,7 @@ fun ThoughtField(
             val rise = sp[i] * (if (flowing) 3.1f else 1f)
             var y = (py[i] - t * rise).mod(1f + 0.16f)
             var x = px[i] + sin(t * 0.25f + ph[i]) * 0.012f
-            var alpha = if (bright[i]) 0.16f else 0.075f
+            var alpha = if (bright[i]) 0.34f else 0.14f
             var radius = sz[i]
 
             if (thinking) {
@@ -84,17 +84,17 @@ fun ThoughtField(
                 val pull = 0.30f + 0.10f * sin(t * 0.6f + ph[i])
                 x += ((focusX / size.width) - x) * pull
                 y += ((focusY / size.height) - y) * pull
-                alpha += 0.07f * pull
+                alpha += 0.20f * pull
                 radius += 0.35f * pull
             } else if (flowing) {
-                alpha += 0.05f
+                alpha += 0.12f
             }
 
             val sx = x * size.width
             val sy = y * size.height
             if (sx < -4f || sx > size.width + 4f || sy < -4f || sy > size.height + 4f) continue
             drawCircle(
-                color = Dot.copy(alpha = alpha.coerceIn(0.02f, 0.35f)),
+                color = Dot.copy(alpha = alpha.coerceIn(0.05f, 0.72f)),
                 radius = radius.coerceIn(0.4f, 2.6f),
                 center = Offset(sx, sy),
             )
@@ -111,7 +111,7 @@ fun ThoughtField(
                 val a = -1.6f + i * 0.26f + sin(t + i) * 0.05f
                 val r = reach * (0.65f + 0.35f * ((i % 3) / 2f))
                 drawCircle(
-                    color = Dot.copy(alpha = 0.5f * fade),
+                    color = Dot.copy(alpha = 0.8f * fade),
                     radius = 1.4f,
                     center = Offset(originX + cos(a) * r, originY + sin(a) * r),
                 )
@@ -127,7 +127,7 @@ fun ThoughtField(
         if (thread > 0f) {
             val x = size.width * 0.86f
             drawLine(
-                color = Dot.copy(alpha = thread),
+                color = Dot.copy(alpha = thread * 1.6f),
                 start = Offset(x, size.height),
                 end = Offset(
                     focusX + (x - focusX) * 0.35f,
@@ -139,4 +139,4 @@ fun ThoughtField(
     }
 }
 
-private val Dot = Color(0xFFE6E8EA)
+private val Dot = Color(0xFFF2F6FF)

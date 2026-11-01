@@ -43,8 +43,6 @@ import kotlin.math.ceil
 import kotlin.math.min
 
 const val NEW_CHAT_TITLE = "New chat"
-const val GREETING =
-    "Hi, I'm Sadu. Tap the microphone and talk, or type below - or just chat with me."
 const val READY_NOTE = "Running offline on this phone"
 const val NEEDS_MODEL_NOTE = "One-time setup: import a Gemma model file in Settings"
 const val NEEDS_GGUF_NOTE = "One-time setup: import a .gguf model file in Settings"
@@ -179,6 +177,14 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     var streamText by mutableStateOf<String?>(null)
+        private set
+
+    /** The model's working-out while it is still going: shown in its own card, never inline. */
+    var streamThinking by mutableStateOf<String?>(null)
+        private set
+
+    /** True while the thinking block is still open, i.e. the answer has not started. */
+    var thinkingLive by mutableStateOf(false)
         private set
 
     /** The text in the composer. Kept here so it survives moving between sections. */
@@ -427,7 +433,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         id = nextId(),
         title = NEW_CHAT_TITLE,
         createdAt = System.currentTimeMillis(),
-        messages = listOf(ChatMsg(GREETING, fromUser = false, at = System.currentTimeMillis())),
+        messages = emptyList(),
         mode = mode,
     )
 
@@ -449,7 +455,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             id = nextIdSafe(),
             title = NEW_CHAT_TITLE,
             createdAt = System.currentTimeMillis(),
-            messages = listOf(ChatMsg(GREETING, fromUser = false)),
+            messages = emptyList(),
             mode = mode,
         )
         sessions = listOf(s) + sessions
@@ -502,7 +508,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     fun clearCurrentChat() {
         sessions = sessions.map {
             if (it.id == currentId) {
-                it.copy(title = NEW_CHAT_TITLE, messages = listOf(ChatMsg(GREETING, fromUser = false)))
+                it.copy(title = NEW_CHAT_TITLE, messages = emptyList())
             } else {
                 it
             }
@@ -558,8 +564,11 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
 
         val buffer = StreamBuffer()
         val state = StreamState()
+        val turn = TurnClock()
+        streamThinking = null
+        thinkingLive = false
         viewModelScope.launch {
-            val ticker = launch { paceStream(buffer, state) }
+            val ticker = launch { paceStream(buffer, state, turn) }
             // The assistant says what it is doing on a worker thread; this puts it on screen.
             val busy = launch {
                 while (true) {
@@ -569,7 +578,10 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             }
             val reply = withContext(Dispatchers.IO) {
                 try {
-                    assistant.respond(text) { delta -> buffer.append(delta) }
+                    assistant.respond(text) { delta ->
+                        turn.firstToken()
+                        buffer.append(delta)
+                    }
                 } catch (e: Throwable) {
                     "Sorry, something went wrong: ${e.message}"
                 }
@@ -581,7 +593,26 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             // A rule answer, a tool result, or the whole on-device reply: reveal it smoothly.
             if (buffer.length == 0) buffer.append(reply)
             ticker.join()
-            push(ChatMsg(reply, fromUser = false))
+            turn.finish()
+            val perf = PerfLine.parse((engine as? com.sadu.assistant.brain.LlamaEngine)?.lastPerf())
+            val thought = Think.thinking(buffer.snapshot()).ifEmpty {
+                Think.thinking(reply)
+            }.ifEmpty { streamThinking.orEmpty() }
+            push(
+                ChatMsg(
+                    text = Think.answer(reply).ifBlank { reply },
+                    fromUser = false,
+                    thinking = thought.takeIf { it.isNotBlank() },
+                    stats = TurnStats(
+                        thinkingMs = turn.thinkingMs(),
+                        promptMs = perf?.promptMs,
+                        ttftMs = turn.ttftMs(),
+                        genTokS = perf?.genTokS,
+                    ),
+                ),
+            )
+            streamThinking = null
+            thinkingLive = false
             answeredBy = if (assistant.answeredWithModel) "Answered by " + router.lastUsed else null
             // One line per message, so a slow answer can be explained instead of guessed at.
             // Chat and Control are logged separately: they are different prompts and different
@@ -591,7 +622,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
                     ?.let { android.util.Log.d("SaduTiming", it) }
             }
             val local = engine as? com.sadu.assistant.brain.LlamaEngine
-            val perf = PerfLine.parse(local?.lastPerf())
             if (perf != null) {
                 android.util.Log.d(
                     "SaduPerf",
@@ -645,7 +675,11 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
      * Shows the reply as it arrives, at a steady pace. Cloud text arrives in bursts,
      * while the rule layer and the on-device model answer in one piece.
      */
-    private suspend fun paceStream(buffer: StreamBuffer, state: StreamState) {
+    private suspend fun paceStream(
+        buffer: StreamBuffer,
+        state: StreamState,
+        turn: TurnClock? = null,
+    ) {
         if (animationsOff()) {
             while (!state.finished) delay(40)
             streamText = null
@@ -659,12 +693,29 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
                 val next = Pacer.next(shown, available)
                 if (next != shown) {
                     shown = next
-                    streamText = buffer.snapshot().take(shown)
+                    publish(buffer.snapshot().take(shown), turn)
                 }
                 delay(Pacer.Tick.toLong())
             }
         } finally {
             streamText = null
+        }
+    }
+
+    /**
+     * Puts a partially arrived reply on screen in the right place: the model's working-out
+     * goes to its own card, and only the answer itself appears in the conversation.
+     */
+    private fun publish(raw: String, turn: TurnClock?) {
+        val split = Think.split(raw)
+        if (split.thinking.isNotBlank()) streamThinking = split.thinking.trim()
+        val answer = split.answer.trimStart()
+        if (answer.isNotBlank()) {
+            if (thinkingLive) turn?.thoughtDone()
+            thinkingLive = false
+            streamText = answer
+        } else {
+            thinkingLive = split.open
         }
     }
 

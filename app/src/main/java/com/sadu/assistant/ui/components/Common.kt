@@ -441,13 +441,22 @@ fun SaduTextField(
     contentDescription: String? = null,
     trailing: (@Composable () -> Unit)? = null,
     textStyle: TextStyle = MaterialTheme.typography.bodyLarge,
+    /** Send on the keyboard, or Default to let Enter start a new line. */
+    imeAction: androidx.compose.ui.text.input.ImeAction =
+        androidx.compose.ui.text.input.ImeAction.Send,
+    /** True when the caller draws the card itself - the chat composer does. */
+    bare: Boolean = false,
 ) {
     Row(
         modifier = modifier
-            .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
-            .background(Ink.Card)
-            .border(1.dp, Ink.Border, androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .then(
+                if (bare) Modifier.padding(horizontal = 4.dp)
+                else Modifier
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                    .background(Ink.Card)
+                    .border(1.dp, Ink.Border, androidx.compose.foundation.shape.RoundedCornerShape(24.dp))
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
             .heightIn(min = Dimens.touch),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -457,8 +466,11 @@ fun SaduTextField(
             textStyle = textStyle.copy(color = Ink.Text),
             cursorBrush = SolidColor(Ink.Text),
             maxLines = maxLines,
-            keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { onSend?.invoke() }),
+            keyboardOptions = KeyboardOptions(imeAction = imeAction),
+            keyboardActions = KeyboardActions(
+                onSend = { onSend?.invoke() },
+                onDone = { onSend?.invoke() },
+            ),
             modifier = Modifier
                 .weight(1f)
                 .padding(vertical = 12.dp)
