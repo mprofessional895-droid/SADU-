@@ -22,7 +22,25 @@ jobs:
         with:
           gradle-version: 8.9
 
+      # One certificate for every build, so a new APK installs over the old one.
+      # The key itself lives in Actions secrets, never in the repository.
+      - name: Restore the development keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.SADU_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::SADU_KEYSTORE_B64 is not set, this APK will need an uninstall first."
+            exit 0
+          fi
+          mkdir -p keystore
+          printf '%s' "$KEYSTORE_B64" | base64 -d > keystore/sadu-dev.jks
+
       - name: Build debug APK
+        env:
+          SADU_KEYSTORE: keystore/sadu-dev.jks
+          SADU_STORE_PASSWORD: ${{ secrets.SADU_STORE_PASSWORD }}
+          SADU_KEY_ALIAS: ${{ secrets.SADU_KEY_ALIAS }}
+          SADU_KEY_PASSWORD: ${{ secrets.SADU_KEY_PASSWORD }}
         run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Keep a copy as a workflow artifact
