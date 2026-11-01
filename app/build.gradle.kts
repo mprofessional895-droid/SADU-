@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -9,6 +11,26 @@ val ndkRoot = file(
     "${System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT") ?: "${System.getProperty("user.home")}/android-sdk"}/ndk"
 )
 val hasNdk = ndkRoot.isDirectory && !(ndkRoot.list()?.isEmpty() ?: true)
+
+// One certificate for every development build, whoever builds it.
+//
+// Android refuses to install an APK over one signed with a different key, which is why a build from
+// a different machine used to need an uninstall first. These values come from `keystore.properties`
+// (git-ignored) or the environment, so the key itself never enters the repository. With neither
+// present the build falls back to Gradle's throwaway debug key and still works.
+val signingProps = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun signingValue(env: String, key: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() } ?: signingProps.getProperty(key)?.takeIf { it.isNotBlank() }
+
+val signStorePath = signingValue("SADU_KEYSTORE", "storeFile")
+val signStorePassword = signingValue("SADU_STORE_PASSWORD", "storePassword")
+val signKeyAlias = signingValue("SADU_KEY_ALIAS", "keyAlias")
+val signKeyPassword = signingValue("SADU_KEY_PASSWORD", "keyPassword")
+val signFile = signStorePath?.let { rootProject.file(it) }?.takeIf { it.isFile }
 
 android {
     namespace = "com.sadu.assistant"
@@ -50,8 +72,27 @@ android {
         }
     }
 
+    signingConfigs {
+        if (signFile != null) {
+            create("sadu") {
+                storeFile = signFile
+                storePassword = signStorePassword
+                keyAlias = signKeyAlias
+                keyPassword = signKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+            }
+        }
+    }
+
     buildTypes {
-        release { isMinifyEnabled = false }
+        debug {
+            if (signFile != null) signingConfig = signingConfigs.getByName("sadu")
+        }
+        release {
+            isMinifyEnabled = false
+            if (signFile != null) signingConfig = signingConfigs.getByName("sadu")
+        }
     }
 
     compileOptions {
