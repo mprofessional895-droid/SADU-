@@ -42,6 +42,8 @@ class Assistant(
     private val cloudWanted: () -> Boolean = { false },
     /** Why the cloud brain cannot answer, when it is switched on but not set up. */
     private val brainProblem: () -> String? = { null },
+    /** TEMPORARY: a hand-written system prompt, or null to use the shipped one. */
+    private val promptOverride: (Mode) -> String? = { null },
 ) {
     private val history = ArrayList<Turn>()
 
@@ -390,7 +392,8 @@ class Assistant(
         // Only the tools this message could need: a narrower menu is a shorter prompt and fewer
         // wrong picks. An unrecognised message keeps all of them.
         val menu = if (current == Mode.Control) tools.menu(tools.specsFor(text)) else ""
-        val instructions = Prompt.system(
+        val said = promptOverride(current)
+        val instructions = said ?: Prompt.system(
             mode = current,
             facts = memory.asContext(text),
             languageName = languageName(),

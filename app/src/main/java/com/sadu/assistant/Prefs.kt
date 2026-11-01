@@ -36,6 +36,24 @@ class Prefs(ctx: Context) {
         get() = Mode.from(p.getString("mode", null))
         set(v) = p.edit().putString("mode", v.tag).apply()
 
+    /**
+     * TEMPORARY (manual testing): send my own system prompt instead of the built-in one.
+     * Off means the shipped prompts are used, exactly as designed.
+     */
+    var customPromptOn: Boolean
+        get() = p.getBoolean("custom_prompt_on", false)
+        set(v) = p.edit().putBoolean("custom_prompt_on", v).apply()
+
+    /** Chat mode's own prompt. Empty while ON means no instructions at all. */
+    var customChatPrompt: String
+        get() = p.getString("custom_chat_prompt", "") ?: ""
+        set(v) = p.edit().putString("custom_chat_prompt", v).apply()
+
+    /** Control mode's own prompt. Empty while ON means no instructions at all. */
+    var customControlPrompt: String
+        get() = p.getString("custom_control_prompt", "") ?: ""
+        set(v) = p.edit().putString("custom_control_prompt", v).apply()
+
     /** Call directly instead of opening the dialer. */
     var directCall: Boolean
         get() = p.getBoolean("direct_call", false)

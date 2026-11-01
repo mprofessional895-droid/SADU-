@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import java.util.Locale
 import com.sadu.assistant.brain.Brain
 import com.sadu.assistant.brain.BrainRouter
 import com.sadu.assistant.brain.CloudBrain
@@ -77,6 +78,8 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     private val localBrain = SwitchableBrain(brainFor(engine))
     private val cloudBrain = CloudBrain({ request -> tools.specsFor(request.user) }) { cloudConfig() }
     private val router = BrainRouter(localBrain, cloudBrain) { cloudWanted() }
+    /** TEMPORARY: the hand-written prompts from Settings, if the user switched them on. */
+    private val promptOverride = PromptOverride(prefs)
     private val brain: Brain = router
 
     /**
@@ -114,6 +117,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         WebSearch.live(),
         { cloudWanted() },
         { if (prefs.cloudEnabled) cloudConfig().problem() else null },
+        { mode -> promptOverride.system(mode) },
     )
     private val store = ChatHistory(ctx)
 
@@ -260,6 +264,47 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     /** The user's own extra instructions for Chat mode. */
     var chatInstructions by mutableStateOf(prefs.chatInstructions)
         private set
+
+    // ---------------------------------------------------------------- TEMPORARY prompt editor
+    // For manual prompt testing only. Off = the shipped prompts, untouched.
+    var customPromptOn by mutableStateOf(prefs.customPromptOn)
+        private set
+
+    var customChatPrompt by mutableStateOf(prefs.customChatPrompt)
+        private set
+
+    var customControlPrompt by mutableStateOf(prefs.customControlPrompt)
+        private set
+
+    fun useCustomPrompt(on: Boolean) {
+        customPromptOn = on
+        prefs.customPromptOn = on
+    }
+
+    fun editCustomChatPrompt(text: String) {
+        customChatPrompt = text
+        prefs.customChatPrompt = text
+    }
+
+    fun editCustomControlPrompt(text: String) {
+        customControlPrompt = text
+        prefs.customControlPrompt = text
+    }
+
+    /** The prompt the app ships for a mode, so the editor can start from the real text. */
+    fun builtInPrompt(mode: Mode): String {
+        val tag = prefs.language
+        return Prompt.system(
+            mode = mode,
+            facts = memory.asContext(""),
+            languageName = if (tag == "auto") "" else Locale.forLanguageTag(tag).displayLanguage,
+            menu = if (mode == Mode.Control) tools.menu() else "",
+            length = prefs.replyLength,
+            style = prefs.chatStyle,
+            extra = prefs.chatInstructions,
+            canSearch = false,
+        )
+    }
 
     /** True while an answer is being written and can still be stopped. */
     var canStop by mutableStateOf(false)
