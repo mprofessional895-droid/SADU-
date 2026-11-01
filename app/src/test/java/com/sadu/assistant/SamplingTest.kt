@@ -27,7 +27,7 @@ class SamplingTest {
 
     @Test
     fun controlKeepsTheSteadierSamplerForToolCalls() {
-        assertEquals(0.6f, Sampling.Command.temperature, 0.001f)
+        assertEquals(0.2f, Sampling.Command.temperature, 0.001f)
         assertNotEquals(Sampling.Command.temperature, Sampling.chat().temperature)
     }
 

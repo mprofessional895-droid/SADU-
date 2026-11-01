@@ -34,6 +34,37 @@ object ContextBudget {
     /** Turns per-exchange overhead (role markers, separator lines). */
     private const val TurnOverhead = 8
 
+    /**
+     * The turns to send, with the dropped ones condensed into one clearly-labelled line.
+     *
+     * History that silently disappears makes the model repeat itself; history that is cut in half
+     * makes it answer the wrong thing. So a middle turn that does not fit becomes a short note
+     * about what was already discussed, and the note is marked as a summary, not as the user's
+     * words.
+     */
+    fun compact(
+        turns: List<Turn>,
+        windowTokens: Int,
+        instructionTokens: Int,
+        reserveTokens: Int = ReplyReserve,
+    ): List<Turn> {
+        val kept = select(turns, windowTokens, instructionTokens, reserveTokens)
+        if (kept.size == turns.size || kept.isEmpty()) return kept
+
+        val keptSet = kept.toSet()
+        val dropped = turns.filterNot { it in keptSet }
+        val gist = dropped.mapNotNull { it.user.trim().take(GIST) }.filter { it.isNotBlank() }
+        if (gist.isEmpty()) return kept
+
+        val note = Turn("(earlier in this conversation: " + gist.joinToString("; ") + ")", "")
+        val budget = windowTokens - instructionTokens - reserveTokens
+        if (estimate(note.user) + TurnOverhead > budget) return kept
+        return listOf(note) + kept
+    }
+
+    /** How much of a dropped message the note keeps. */
+    private const val GIST = 60
+
     fun clamp(requested: Int): Int = when {
         requested <= 0 -> Default
         requested < Min -> Min

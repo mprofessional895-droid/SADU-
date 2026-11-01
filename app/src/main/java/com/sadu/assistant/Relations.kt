@@ -30,6 +30,10 @@ object Relations {
 
 /** How many tool calls Sadu may make while working out one message. */
 object ToolSteps {
-    /** Each step is a full model round trip, so this is also the wait before Sadu summarises. */
-    const val Max = 4
+    /**
+     * Each step is a full model round trip, so this is also the wait before Sadu summarises.
+     * Messaging a contact needs two (open the chat, write the message); four left no room for a
+     * third one, so eight is the ceiling and a repeat of an already-run call ends the chain early.
+     */
+    const val Max = 8
 }

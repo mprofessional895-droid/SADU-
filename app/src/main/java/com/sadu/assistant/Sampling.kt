@@ -40,8 +40,12 @@ data class Sampling(
          */
         const val MaxTopK = 64
 
-        /** A tool call has to come back as valid JSON, so Control mode stays steadier. */
-        val Command = Sampling(0.6f)
+        /**
+         * A tool call has to come back as valid JSON, so Control mode stays steadier. 0.2 is the
+         * bottom of the range that still allows a judgement call between two plausible tools;
+         * below it a small model starts repeating the example instead of reading the request.
+         */
+        val Command = Sampling(0.2f)
 
         fun chat(temperature: Float = DefaultTemperature): Sampling =
             Sampling(clampTemperature(temperature))

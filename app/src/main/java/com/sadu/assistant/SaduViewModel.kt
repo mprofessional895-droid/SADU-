@@ -75,7 +75,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     private val tools = Tools(actions, memory, { prefs.mode })
     // Starts on whichever engine the settings point at, so a cold start and a switch agree.
     private val localBrain = SwitchableBrain(brainFor(engine))
-    private val cloudBrain = CloudBrain({ tools.specs }) { cloudConfig() }
+    private val cloudBrain = CloudBrain({ request -> tools.specsFor(request.user) }) { cloudConfig() }
     private val router = BrainRouter(localBrain, cloudBrain) { cloudWanted() }
     private val brain: Brain = router
 
@@ -86,7 +86,10 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     private fun brainFor(target: Engine): OfflineBrain = OfflineBrain(
         target,
         if (target === llamaEngine) {
-            ModelChatTemplate { instructions, turns, text -> llamaEngine.applyTemplate(instructions, turns, text) }
+            ModelChatTemplate(
+                { instructions, turns, text -> llamaEngine.applyTemplate(instructions, turns, text) },
+                { llamaEngine.family },
+            )
         } else {
             GemmaChatTemplate
         },
@@ -535,14 +538,30 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             ticker.join()
             push(ChatMsg(reply, fromUser = false))
             answeredBy = if (assistant.answeredWithModel) "Answered by " + router.lastUsed else null
-            // Chat mode only: one line per message, so a slow answer can be explained.
+            // One line per message, so a slow answer can be explained instead of guessed at.
+            // Chat and Control are logged separately: they are different prompts and different
+            // work, and mixing them makes every comparison meaningless.
             if (prefs.mode == Mode.Chat) {
                 assistant.lastChatTiming().takeIf { it.isNotEmpty() }
                     ?.let { android.util.Log.d("SaduTiming", it) }
-                // llama.cpp's own split, plus what the process is really holding.
-                (engine as? com.sadu.assistant.brain.LlamaEngine)?.lastPerf()
-                    ?.takeIf { it.isNotEmpty() }
-                    ?.let { android.util.Log.d("SaduPerf", it + ramPeak()) }
+            }
+            val local = engine as? com.sadu.assistant.brain.LlamaEngine
+            val perf = PerfLine.parse(local?.lastPerf())
+            if (perf != null) {
+                android.util.Log.d(
+                    "SaduPerf",
+                    perf.line(router.lastUsed, prefs.mode, assistant.lastSteps().size, assistant.lastToolMs()) +
+                        ramPeak(),
+                )
+            } else if (assistant.answeredWithModel) {
+                // Cloud answer: no prefill counters to read, so the split that matters is
+                // network versus tool time.
+                android.util.Log.d(
+                    "SaduPerf",
+                    "engine=" + router.lastUsed + " mode=" + prefs.mode.name +
+                        " steps=" + assistant.lastSteps().size +
+                        " tool_ms=" + assistant.lastToolMs() + ramPeak(),
+                )
             }
             // Only a model answer can be "the phone instead of the cloud"; a built-in
             // rule is not a model at all, so it explains nothing.

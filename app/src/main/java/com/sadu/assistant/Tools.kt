@@ -68,8 +68,11 @@ class Tools(
     fun has(name: String): Boolean =
         specs.any { it.name.equals(name.trim(), ignoreCase = true) }
 
-    fun menu(): String =
+    fun menu(specs: List<ToolSpec> = this.specs): String =
         specs.joinToString("\n") { "- ${it.name}(${it.args}): ${it.description}" }
+
+    /** The tools worth showing for this message - every one of them when unsure. */
+    fun specsFor(text: String): List<ToolSpec> = ToolRouter.select(text, specs)
 
     fun run(name: String, args: Map<String, String>): ToolOutcome {
         // Chat mode is enforced here, not only in the prompt: a model that ignores its

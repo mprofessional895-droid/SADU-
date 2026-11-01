@@ -8,6 +8,15 @@ import org.junit.Test
 class ContextBudgetTest {
 
     @Test
+    fun droppedTurnsBecomeOneLabelledNoteInsteadOfVanishing() {
+        val turns = (1..12).map { Turn("question number $it about a different subject", "a fairly long answer $it") }
+        val kept = ContextBudget.compact(turns, 1024, 300)
+        assertTrue("nothing was dropped, so nothing to test", kept.size < turns.size)
+        assertTrue(kept.first().user.startsWith("(earlier in this conversation:"))
+        assertTrue(kept.last().user.contains("12"))
+    }
+
+    @Test
     fun estimateIsZeroForNothing() {
         assertEquals(0, ContextBudget.estimate(""))
     }

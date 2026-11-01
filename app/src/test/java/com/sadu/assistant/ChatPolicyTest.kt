@@ -63,6 +63,25 @@ class ChatPolicyTest {
         }
     }
 
+    /**
+     * The line between asking about the phone and asking the phone to do something. Both sides
+     * are written the way a Hinglish speaker actually types them.
+     */
+    @Test
+    fun aQuestionAboutThePhoneIsNotACommand() {
+        assertFalse(ChatPolicy.phoneIntent("WhatsApp kaise kaam karta hai?"))
+        assertFalse(ChatPolicy.phoneIntent("flashlight kya hoti hai?"))
+        assertFalse(ChatPolicy.phoneIntent("whatsapp kaise chalu karte hai"))
+    }
+
+    @Test
+    fun aRequestToThePhoneStillIsACommand() {
+        assertTrue(ChatPolicy.phoneIntent("WhatsApp par mummy ko message bhejo."))
+        assertTrue(ChatPolicy.phoneIntent("Flashlight on karo."))
+        assertTrue(ChatPolicy.phoneIntent("flashlight band karo"))
+        assertTrue(ChatPolicy.phoneIntent("bhej do ki kya haal hai"))
+    }
+
     @Test
     fun emptyInputIsNotAPhoneRequest() {
         assertFalse(ChatPolicy.phoneIntent(""))
