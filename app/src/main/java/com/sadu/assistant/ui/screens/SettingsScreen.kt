@@ -111,6 +111,10 @@ data class SettingsUiState(
     val chatStyle: ChatStyle = ChatStyle.Default,
     val chatTemperature: Float = Sampling.DefaultTemperature,
     val chatInstructions: String = "",
+    /** TEMPORARY: the hand-written prompts from Settings, for manual testing. */
+    val customPromptOn: Boolean = false,
+    val customChatPrompt: String = "",
+    val customControlPrompt: String = "",
     val cloudEnabled: Boolean = false,
     val cloudProvider: CloudProvider = CloudProvider.Compatible,
     val cloudBaseUrl: String = "",
@@ -166,6 +170,9 @@ fun SettingsScreen(vm: SaduViewModel) {
             chatStyle = vm.chatStyle,
             chatTemperature = vm.chatTemperature,
             chatInstructions = vm.chatInstructions,
+            customPromptOn = vm.customPromptOn,
+            customChatPrompt = vm.customChatPrompt,
+            customControlPrompt = vm.customControlPrompt,
             cloudEnabled = vm.cloudEnabled,
             cloudProvider = vm.cloudProvider,
             cloudBaseUrl = vm.cloudBaseUrl,
@@ -204,6 +211,10 @@ fun SettingsScreen(vm: SaduViewModel) {
         onClearCloudKey = { vm.clearCloudApiKey() },
         onTestCloud = { vm.testCloud() },
         onWebAnswers = { vm.chooseWebAnswers(it) },
+        onCustomPrompt = { vm.useCustomPrompt(it) },
+        onCustomChatPrompt = { vm.editCustomChatPrompt(it) },
+        onCustomControlPrompt = { vm.editCustomControlPrompt(it) },
+        onBuiltInPrompt = { vm.builtInPrompt(it) },
     )
 }
 
@@ -235,6 +246,10 @@ fun SettingsContent(
     onClearCloudKey: () -> Unit = {},
     onTestCloud: () -> Unit = {},
     onWebAnswers: (Boolean) -> Unit = {},
+    onCustomPrompt: (Boolean) -> Unit = {},
+    onCustomChatPrompt: (String) -> Unit = {},
+    onCustomControlPrompt: (String) -> Unit = {},
+    onBuiltInPrompt: (Mode) -> String = { "" },
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -330,6 +345,19 @@ fun SettingsContent(
                     onLength = onReplyLength,
                 )
             }
+        }
+
+        // ------------------------------------------------------- TEMPORARY prompt editor
+        item(key = "prompt") {
+            PromptEditorCard(
+                on = state.customPromptOn,
+                chatText = state.customChatPrompt,
+                controlText = state.customControlPrompt,
+                onToggle = onCustomPrompt,
+                onChatText = onCustomChatPrompt,
+                onControlText = onCustomControlPrompt,
+                builtIn = onBuiltInPrompt,
+            )
         }
 
         // ------------------------------------------------------------------- cloud
