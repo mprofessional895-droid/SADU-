@@ -535,6 +535,11 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             ticker.join()
             push(ChatMsg(reply, fromUser = false))
             answeredBy = if (assistant.answeredWithModel) "Answered by " + router.lastUsed else null
+            // Chat mode only: one line per message, so a slow answer can be explained.
+            if (prefs.mode == Mode.Chat) {
+                assistant.lastChatTiming().takeIf { it.isNotEmpty() }
+                    ?.let { android.util.Log.d("SaduTiming", it) }
+            }
             // Only a model answer can be "the phone instead of the cloud"; a built-in
             // rule is not a model at all, so it explains nothing.
             val usedCloud = assistant.answeredWithModel && router.lastUsed != localBrain.name
