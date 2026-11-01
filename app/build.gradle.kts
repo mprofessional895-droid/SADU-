@@ -22,14 +22,20 @@ android {
         applicationId = "com.sadu.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 31
-        versionName = "0.28"
+        versionCode = 32
+        versionName = "0.29"
         ndk { abiFilters += listOf("arm64-v8a") }
 
         if (hasNdk) {
             externalNativeBuild {
                 cmake {
-                    arguments += listOf("-DANDROID_STL=c++_shared", "-DCMAKE_BUILD_TYPE=Release")
+                    // -PsaduArm=armv8-a builds a library that also runs on pre-2018 phones.
+                    val arm = (project.findProperty("saduArm") as String?) ?: "armv8.2-a+dotprod+fp16"
+                    arguments += listOf(
+                        "-DANDROID_STL=c++_shared",
+                        "-DCMAKE_BUILD_TYPE=Release",
+                        "-DsaduArmBaseline=$arm",
+                    )
                 }
             }
         }
