@@ -535,3 +535,20 @@ Prompt speed and generation speed are the split the task asked for; `ram_peak` i
 
 Not changed on purpose: `n_ctx` 4096, `n_batch` 512, `n_ubatch` = `n_batch`, `n_gpu_layers` 0
 (llama.cpp for Android has no usable GPU backend), mmap on, model untouched, Control mode untouched.
+
+## Signing: one certificate, every build (v0.29+)
+
+Android will not install an APK over one signed by a different key. Debug builds from different
+machines each have their own throwaway debug key, which is why an update used to need an uninstall.
+
+- Key: `keystore/sadu-dev.jks`, alias `sadu`, RSA 2048, 10000 days. Git-ignored.
+- Passwords: `keystore.properties` at the repo root (git-ignored), or the environment variables
+  `SADU_KEYSTORE`, `SADU_STORE_PASSWORD`, `SADU_KEY_ALIAS`, `SADU_KEY_PASSWORD`. Both routes give
+  the same certificate - checked with `./gradlew :app:signingReport`.
+- `app/build.gradle.kts` points debug **and** release at that config when the key is present, and
+  falls back to the throwaway debug key when it is not, so a build without the key still works.
+- Certificate SHA-256: `7D:29:44:FD:95:AF:81:1C:2F:BC:AA:17:C4:1B:7C:24:A9:B1:38:DE:9F:C5:A6:47:FC:2F:4D:40:B9:4A:00:F1`
+- Verify any APK with:
+  `$ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs <apk>`
+
+Moving to a machine without the key: copy the two files from the signing backup, never regenerate.
