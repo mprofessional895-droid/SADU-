@@ -1,6 +1,7 @@
 package com.sadu.assistant.prompt
 
 import com.sadu.assistant.Turn
+import com.sadu.assistant.brain.ModelFamily
 
 /**
  * How instructions and a conversation are written out for the on-device model.
@@ -21,15 +22,38 @@ interface ChatTemplate {
  */
 class ModelChatTemplate(
     private val render: (String, List<Turn>, String) -> String,
+    /** The family the loaded model belongs to, for the fallback when its template is unusable. */
+    private val family: () -> ModelFamily = { ModelFamily.Other },
 ) : ChatTemplate {
 
     override fun build(instructions: String, turns: List<Turn>, text: String): String {
+        val said = text.trim()
         val rendered = runCatching { render(instructions, turns, text) }.getOrDefault("")
-        return rendered.ifEmpty { GemmaChatTemplate.build(instructions, turns, text) }
+
+        // llama.cpp applied the model's own template: it is the only correct format for this
+        // model, so it is taken as is. The one thing worth checking is that the message survived
+        // it - a template that quietly drops the user's words is worse than no template.
+        if (rendered.isNotBlank() && keeps(rendered, said)) return rendered
+
+        val fallback = FamilyChatTemplate.build(family(), instructions, turns, text)
+        // Last resort: the family format could not keep the message either, so the message is put
+        // at the end verbatim rather than being lost.
+        if (keeps(fallback, said)) return fallback
+        return fallback + (if (fallback.endsWith("\n")) "" else "\n") + said
     }
 
     companion object {
 
-        const val VERSION = "model-template-1"
+        const val VERSION = "model-template-2"
+
+        /** How much of the message has to be findable in the prompt to count as kept. */
+        private const val PROOF = 24
+
+        fun keeps(prompt: String, said: String): Boolean {
+            if (said.isEmpty()) return prompt.isNotBlank()
+            if (prompt.isBlank()) return false
+            val proof = said.takeLast(PROOF.coerceAtMost(said.length))
+            return prompt.contains(proof)
+        }
     }
 }

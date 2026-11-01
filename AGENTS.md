@@ -552,3 +552,18 @@ machines each have their own throwaway debug key, which is why an update used to
   `$ANDROID_HOME/build-tools/34.0.0/apksigner verify --print-certs <apk>`
 
 Moving to a machine without the key: copy the two files from the signing backup, never regenerate.
+
+## Inference architecture (v0.30)
+
+- `ToolRouter` picks the tool *categories* a message could need and narrows the menu; it fails
+  open (unknown message = every tool) and never decides the action itself.
+- `ModelFamily` + `FamilyChatTemplate` give a template-less `.gguf` its own family's format
+  (Llama 3, ChatML/Qwen, Mistral, Phi) instead of Gemma's; `ModelChatTemplate` rejects any
+  rendering that lost the user's message.
+- `MemoryFocus` sends only the facts the message is about (plus standing preferences), never the
+  last ten regardless.
+- `ContextBudget.compact` turns dropped history into one labelled "(earlier in this
+  conversation: ...)" turn instead of losing it silently.
+- `PerfLine` parses llama.cpp's counters into prefill/gen phases; `SaduViewModel` logs one
+  `SaduPerf` line per message with mode, steps and tool time. Chat and Control are never mixed.
+- Control sampling is 0.2 (was 0.6); a command needs a JSON object, not liveliness.

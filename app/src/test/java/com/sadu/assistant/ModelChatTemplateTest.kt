@@ -17,17 +17,17 @@ class ModelChatTemplateTest {
 
     @Test
     fun theModelsOwnRenderingIsUsedWhenThereIsOne() {
-        val template = ModelChatTemplate { _, _, _ -> "MODEL FORMAT: hi / hello / again" }
+        val template = ModelChatTemplate({ _, _, _ -> "MODEL FORMAT: hi / hello / again" })
         assertEquals("MODEL FORMAT: hi / hello / again", template.build("INSTRUCTIONS", turns, "again"))
     }
 
     @Test
     fun theInstructionsAndTurnsAreHandedToTheModel() {
         var seen: Triple<String, List<Turn>, String>? = null
-        val template = ModelChatTemplate { instructions, given, text ->
+        val template = ModelChatTemplate({ instructions, given, text ->
             seen = Triple(instructions, given, text)
-            "rendered"
-        }
+            "rendered again"
+        })
         template.build("INSTRUCTIONS", turns, "again")
         assertEquals("INSTRUCTIONS", seen?.first)
         assertEquals(turns, seen?.second)
@@ -36,7 +36,7 @@ class ModelChatTemplateTest {
 
     @Test
     fun gemmasTemplateTakesOverWhenTheModelHasNone() {
-        val template = ModelChatTemplate { _, _, _ -> "" }
+        val template = ModelChatTemplate({ _, _, _ -> "" })
         val prompt = template.build("INSTRUCTIONS", turns, "again")
         assertEquals(GemmaChatTemplate.build("INSTRUCTIONS", turns, "again"), prompt)
         assertTrue(prompt.startsWith("<start_of_turn>user\nINSTRUCTIONS"))
@@ -45,7 +45,7 @@ class ModelChatTemplateTest {
 
     @Test
     fun aFailingTemplateDoesNotBreakTheReply() {
-        val template = ModelChatTemplate { _, _, _ -> throw IllegalStateException("bad template") }
+        val template = ModelChatTemplate({ _, _, _ -> throw IllegalStateException("bad template") })
         val prompt = template.build("INSTRUCTIONS", emptyList(), "hello")
         assertEquals(GemmaChatTemplate.build("INSTRUCTIONS", emptyList(), "hello"), prompt)
     }

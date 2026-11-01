@@ -159,6 +159,20 @@ class LlamaEngine(private val ctx: Context) : Engine {
         if (current != 0L) runCatching { nativeFree(current) }
     }
 
+    /** What llama.cpp says the loaded file is: description;params;bytes;trainedCtx;hasTemplate. */
+    fun modelInfo(): String {
+        val current = handle
+        if (current == 0L) return ""
+        return runCatching { nativeModelInfo(current) }.getOrDefault("")
+    }
+
+    /** The family of the loaded model, for the prompt format when it carries no template. */
+    val family: ModelFamily
+        get() = ModelFamily.of(modelInfo().substringBefore(';'), modelFile.name)
+
+    /** The context the model was trained for, or 0 when unknown. */
+    fun trainedContext(): Int = modelInfo().split(';').getOrNull(3)?.toIntOrNull() ?: 0
+
     /**
      * The model's own chat template, applied by llama.cpp. "" when the model carries none, which
      * is what makes [ModelChatTemplate] fall back to Gemma's.
@@ -257,6 +271,8 @@ class LlamaEngine(private val ctx: Context) : Engine {
     private external fun nativeLastError(): String
 
     private external fun nativeLastPerf(handle: Long): String
+
+    private external fun nativeModelInfo(handle: Long): String
 
     private external fun nativeApplyTemplate(handle: Long, roles: Array<String>, contents: Array<String>): String
 

@@ -34,7 +34,7 @@ class RelationsTest {
 
     @Test
     fun theStepBudgetIsSmallAndReal() {
-        assertTrue(ToolSteps.Max in 2..6)
+        assertTrue(ToolSteps.Max in 5..8)
     }
 
     @Test

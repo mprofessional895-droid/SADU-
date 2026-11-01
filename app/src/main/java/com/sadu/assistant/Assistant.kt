@@ -48,6 +48,11 @@ class Assistant(
     /** The tools the last answer ran, in order. Empty when a rule or plain chat answered. */
     private val steps = StepLog()
 
+    /** Time the phone spent running tools for the last message, apart from model time. */
+    private var toolMs = 0L
+
+    fun lastToolMs(): Long = toolMs
+
     fun lastSteps(): List<StepRecord> = steps.all()
 
     fun resetHistory() {
@@ -120,6 +125,7 @@ class Assistant(
         lastActionClaim = false
         lastWebSources = emptyList()
         steps.clear()
+        toolMs = 0
         stage = null
         val current = mode()
 
@@ -177,12 +183,14 @@ class Assistant(
         // Chat mode never gets here with a phone tool, because ModePolicy refuses at run time.
         var retried = false
         var lastCall: Pair<String, Map<String, String>>? = null
+        val seen = HashSet<Pair<String, Map<String, String>>>()
         while (true) {
             val call = parseToolCall(raw) ?: break
             val (name, args) = call
 
-            // The same call twice in a row means the model has nothing new to do.
-            if (call == lastCall) break
+            // The same call twice means the model has nothing new to do - either twice in a row
+            // or A, B, A, which a small model likes to do. Neither should touch the phone twice.
+            if (call == lastCall || !seen.add(call)) break
             lastCall = call
 
             // A made-up tool name is worth one more try with the menu in front of the model.
@@ -196,7 +204,9 @@ class Assistant(
                 continue
             }
 
+            val startedTool = System.nanoTime()
             val outcome = tools.run(name, args)
+            toolMs += (System.nanoTime() - startedTool) / 1_000_000
             steps.add(name, outcome.display)
 
             // Held back or unknown: that sentence is the answer, so say it and stop.
@@ -377,10 +387,12 @@ class Assistant(
         toolResults: List<StepRecord> = emptyList(),
         retry: Boolean = false,
     ): LlmRequest {
-        val menu = if (current == Mode.Control) tools.menu() else ""
+        // Only the tools this message could need: a narrower menu is a shorter prompt and fewer
+        // wrong picks. An unrecognised message keeps all of them.
+        val menu = if (current == Mode.Control) tools.menu(tools.specsFor(text)) else ""
         val instructions = Prompt.system(
             mode = current,
-            facts = memory.asContext(),
+            facts = memory.asContext(text),
             languageName = languageName(),
             menu = menu,
             length = replyLength(),
@@ -395,7 +407,7 @@ class Assistant(
         val window = ContextBudget.clamp(contextTokens())
         return LlmRequest(
             system = instructions,
-            turns = ContextBudget.select(history, window, fixed),
+            turns = ContextBudget.compact(history, window, fixed),
             user = text,
             mode = current,
         )

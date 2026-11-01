@@ -25,13 +25,32 @@ object ChatPolicy {
     const val CLAIM_NOTE =
         "Chat mode can't use the phone - switch to Control mode if you want that done."
 
+    /**
+     * Question wording, English and Hinglish. A question about the phone is conversation, so it
+     * must not be caught by the action patterns below - "WhatsApp kaise kaam karta hai?" is a
+     * question, "WhatsApp kholo" is a command, and only the second one reaches the phone.
+     */
     private val QUESTION = Regex(
-        "\\b(how|what|why|when|where|which|who|does|do i|can i|should i|is it|are there)\\b" +
+        "\\b(how|what|why|when|where|which|who|does|do i|can i|should i|is it|are there|" +
+            "explain|meaning|difference|tell me about|kaise|kya|kyu|kyun|kab|kahan|kidhar|" +
+            "kaun|kitna|kitni|batao|bata do|samjhao|samjha)\\b" +
             "|\\?"
     )
 
+    /**
+     * The verbs that make a message a request. Kept separate from [QUESTION] so "bhej do ki kya
+     * haal hai" stays a command even though it carries a question word.
+     */
+    private val COMMAND_START = Regex(
+        "^(?:send|text|message|sms|dm|reply|forward|call|dial|ring|set|turn|switch|" +
+            "toggle|open|launch|start|install|download|uninstall|take|read|play|remind|wake|" +
+            "bhej|bhejo|bhej do|bhejde|khol|kholo|khol de|kar|kardo|kar de|lagao|bajao|chalao|" +
+            "band|chalu|chalu kar)\\b"
+    )
+
     private val MESSAGE = Regex(
-        "^(?:send|text|message|sms|whatsapp|dm|reply|forward)\\b(?=\\s+\\S)"
+        "^(?:send|text|message|sms|whatsapp|dm|reply|forward|" +
+            "bhej do|bhejdo|bhej de|bhejde|bhejo|bhej|likh do|likho)\\b(?=\\s+\\S)"
     )
 
     private val CALL = Regex("^(?:call|dial|ring|phone)\\b(?=\\s+\\S)")
@@ -46,6 +65,13 @@ object ChatPolicy {
         "^(?:turn|switch|toggle|put|keep|enable|disable|open|show|connect|disconnect|change)\\b" +
             "[^.]*\\b(flashlight|torch|wifi|wi-?fi|bluetooth|volume|silent|mute|airplane|" +
             "do not disturb|dnd|brightness|mobile data|hotspot)\\b"
+    )
+
+    /** "flashlight on karo" puts the device first, so the verb pattern above cannot see it. */
+    private val DEVICE_THEN_VERB = Regex(
+        "^(?:flashlight|torch|wifi|wi-?fi|bluetooth|volume|silent|airplane|brightness|data)\\b" +
+            "[^.]*\\b(?:on|off|band|chalu|chalu kar|karo|kar do|kardo|kar de|up|down|mute|unmute|" +
+            "badha|kam)\\b"
     )
 
     private val DEVICE_ONLY = Regex(
@@ -77,12 +103,14 @@ object ChatPolicy {
     fun phoneIntent(text: String): Boolean {
         val clean = normalize(text)
         if (clean.isEmpty()) return false
-        if (QUESTION.containsMatchIn(clean)) return false
+        val command = COMMAND_START.containsMatchIn(clean)
+        if (!command && QUESTION.containsMatchIn(clean)) return false
         return MESSAGE.containsMatchIn(clean) ||
             CALL.containsMatchIn(clean) ||
             SCHEDULE.containsMatchIn(clean) ||
             SWITCH.containsMatchIn(clean) ||
             DEVICE_ONLY.matches(clean) ||
+            DEVICE_THEN_VERB.containsMatchIn(clean) ||
             APPS.containsMatchIn(clean) ||
             SCREEN.containsMatchIn(clean) ||
             CAPTURE.containsMatchIn(clean) ||

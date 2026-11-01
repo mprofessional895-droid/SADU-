@@ -487,13 +487,14 @@ object CloudReply {
 
 class CloudBrain(
     /** The toolbox the model may call. Declared to the provider, so the model itself decides. */
-    private val toolSpecs: () -> List<ToolSpec> = { emptyList() },
+    /** Tools to declare for one request: Control mode only, and only the ones it needs. */
+    private val toolSpecs: (LlmRequest) -> List<ToolSpec> = { emptyList() },
     private val config: () -> CloudConfig,
 ) : Brain {
 
     /** Control mode is the mode that carries the phone; Chat mode declares no tools. */
     private fun toolsFor(@Suppress("UNUSED_PARAMETER") request: LlmRequest): List<ToolSpec> =
-        toolSpecs()
+        toolSpecs(request)
 
     override val isReady: Boolean get() = config().isUsable
 
