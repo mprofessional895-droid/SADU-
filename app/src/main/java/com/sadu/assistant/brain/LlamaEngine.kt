@@ -237,8 +237,11 @@ class LlamaEngine(private val ctx: Context) : Engine {
         if (!isAvailable) throw IllegalStateException(Unavailable)
     }
 
-    private fun threads(): Int =
-        Runtime.getRuntime().availableProcessors().coerceIn(MinThreads, MaxThreads)
+    /** How many threads the model runs on: the big cores, not every core the phone reports. */
+    private fun threads(): Int = CpuTopology.threads()
+
+    /** llama.cpp's own numbers for the last reply: prompt speed and generation speed apart. */
+    fun lastPerf(): String = runCatching { nativeLastPerf(handle) }.getOrDefault("")
 
     /** The token sink the native side calls back into. */
     private interface TokenSink {
@@ -252,6 +255,8 @@ class LlamaEngine(private val ctx: Context) : Engine {
     private external fun nativeCancel(handle: Long)
 
     private external fun nativeLastError(): String
+
+    private external fun nativeLastPerf(handle: Long): String
 
     private external fun nativeApplyTemplate(handle: Long, roles: Array<String>, contents: Array<String>): String
 
@@ -279,9 +284,6 @@ class LlamaEngine(private val ctx: Context) : Engine {
         const val MinModelBytes = 8L * 1024 * 1024
 
         const val Batch = 512
-
-        private const val MinThreads = 2
-        private const val MaxThreads = 6
 
         private const val ROLE_SYSTEM = "system"
         private const val ROLE_USER = "user"

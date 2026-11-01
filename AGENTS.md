@@ -510,3 +510,28 @@ that engine the only lever is prompt size, which is why the Chat instruction was
 
 `ChatTiming` logs one line per Chat message - `chat total=..ms ttft=..ms requests=.. prompt=..tok~ reply=..tok~`
 under the tag `SaduTiming`. Control mode never uses it.
+
+## GGUF speed: what was actually different from PocketPal (v0.29)
+
+Three things, all in the build or the thread count, none in the model:
+
+1. **ggml was compiled for `armv8-a`.** `CMakeLists.txt` forced `GGML_CPU_ARM_ARCH armv8-a`, so the
+   binary contained no `sdot`/`udot` and no fp16 arithmetic: every Q4_K matmul fell back to the
+   portable path. A PocketPal-class build is compiled for the phone it runs on. Now the baseline is
+   `armv8.2-a+dotprod+fp16` (`-PsaduArm=armv8-a` restores the old library for pre-2018 phones).
+   Verified in the built library: `llvm-objdump -d libggml-cpu.so | grep -c sdot` = **1148**;
+   with `armv8-a` it is 0.
+   `GGML_CPU_ALL_VARIANTS` (runtime dispatch) is x86/riscv64 only in this llama.cpp, so one ARM
+   baseline is all the build system offers.
+2. **Threads were every core the phone reports, up to 6.** `CpuTopology` now reads each core's
+   `cpuinfo_max_freq`, keeps the ones within 90% of the fastest (the big cluster) and caps at 4 -
+   what llama.cpp recommends and what PocketPal ships. Fallback when the kernel hides the file: 4.
+3. **`ctxParams.no_perf = true`** hid llama.cpp's own counters, so a slow turn could not be split
+   into prompt time and generation time. It is `false` now.
+
+Measurement, one line per Chat message, tag `SaduPerf`:
+`prompt=..tok/s (N tok in Xms) gen=..tok/s (N tok in Xms) ctx=4096 threads=4 ram_peak=..MB`.
+Prompt speed and generation speed are the split the task asked for; `ram_peak` is `VmHWM`.
+
+Not changed on purpose: `n_ctx` 4096, `n_batch` 512, `n_ubatch` = `n_batch`, `n_gpu_layers` 0
+(llama.cpp for Android has no usable GPU backend), mmap on, model untouched, Control mode untouched.

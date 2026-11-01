@@ -61,6 +61,8 @@ struct Session {
     // Every token already in the KV cache, prompt and answer together. The next turn decodes
     // only the part that differs, which is what makes a short turn take a moment, not seconds.
     std::vector<llama_token> cache;
+    std::string perf;
+    std::mutex perfLock;
 };
 
 Session *sessionOf(jlong handle) {
@@ -103,7 +105,9 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeLoad(
     ctxParams.n_ubatch = ctxParams.n_batch;
     ctxParams.n_threads = nThreads > 0 ? nThreads : 4;
     ctxParams.n_threads_batch = ctxParams.n_threads;
-    ctxParams.no_perf = true;
+    // The perf counters are what the split between prompt speed and generation speed is read
+    // from, so they have to stay on - it costs two clock reads per turn.
+    ctxParams.no_perf = false;
     // Lets a stop request interrupt a decode that is already running.
     ctxParams.abort_callback = [](void *data) -> bool {
         return static_cast<Session *>(data)->cancelled.load();
@@ -170,6 +174,14 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeModelInfo(JNIEnv *env, jobject, 
 
 // The model's own template, applied by llama.cpp over a whole conversation. An empty string means
 // the model carries no usable template and Kotlin should fall back to the frozen Gemma one.
+JNIEXPORT jstring JNICALL
+Java_com_sadu_assistant_brain_LlamaEngine_nativeLastPerf(JNIEnv *env, jobject, jlong handle) {
+    Session *session = sessionOf(handle);
+    if (session == nullptr) return toJava(env, "");
+    std::lock_guard<std::mutex> guard(session->perfLock);
+    return toJava(env, session->perf);
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_sadu_assistant_brain_LlamaEngine_nativeApplyTemplate(
         JNIEnv *env, jobject, jlong handle, jobjectArray roles, jobjectArray contents) {
@@ -273,6 +285,9 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
     }
     session->cache.resize(shared);
 
+    // Numbers for this turn only, so prompt speed and generation speed can be read apart.
+    llama_perf_context_reset(session->ctx);
+
     llama_sampler_chain_params samplerParams = llama_sampler_chain_default_params();
     samplerParams.no_perf = true;
     llama_sampler *chain = llama_sampler_chain_init(samplerParams);
@@ -371,6 +386,19 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
     }
 
     llama_sampler_free(chain);
+
+    {
+        const llama_perf_context_data perf = llama_perf_context(session->ctx);
+        const double ps = perf.t_p_eval_ms > 0.0 ? perf.n_p_eval / (perf.t_p_eval_ms / 1000.0) : 0.0;
+        const double gs = perf.t_eval_ms > 0.0 ? perf.n_eval / (perf.t_eval_ms / 1000.0) : 0.0;
+        char line[256];
+        snprintf(line, sizeof(line),
+                 "prompt=%.1ftok/s (%d tok in %.0fms) gen=%.1ftok/s (%d tok in %.0fms) ctx=%d threads=%d",
+                 ps, perf.n_p_eval, perf.t_p_eval_ms, gs, perf.n_eval, perf.t_eval_ms,
+                 contextSize, llama_n_threads(session->ctx));
+        session->perf = line;
+        LOGI("%s", line);
+    }
     LOGI("generated %zu chars", answer.size());
     return toJava(env, answer);
 }

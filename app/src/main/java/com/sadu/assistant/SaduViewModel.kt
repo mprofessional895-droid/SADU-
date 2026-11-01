@@ -539,6 +539,10 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             if (prefs.mode == Mode.Chat) {
                 assistant.lastChatTiming().takeIf { it.isNotEmpty() }
                     ?.let { android.util.Log.d("SaduTiming", it) }
+                // llama.cpp's own split, plus what the process is really holding.
+                (engine as? com.sadu.assistant.brain.LlamaEngine)?.lastPerf()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { android.util.Log.d("SaduPerf", it + ramPeak()) }
             }
             // Only a model answer can be "the phone instead of the cloud"; a built-in
             // rule is not a model at all, so it explains nothing.
@@ -1083,6 +1087,15 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+
+    /** Peak resident memory of the app so far, for the perf line. */
+    private fun ramPeak(): String {
+        val line = runCatching {
+            java.io.File("/proc/self/status").readLines().firstOrNull { it.startsWith("VmHWM") }
+        }.getOrNull()?.trim() ?: return ""
+        val kb = line.substringAfter("VmHWM:").trim().substringBefore(' ').toLongOrNull() ?: return ""
+        return " ram_peak=" + kb / 1024 + "MB"
+    }
 
     private fun cloudConfig() = CloudConfig(
         provider = prefs.cloudProvider,

@@ -37,8 +37,13 @@ set(GGML_LTO OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GGML_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
 set(GGML_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
-# The APK ships arm64-v8a only, so asking ggml for that baseline keeps the library small.
-set(GGML_CPU_ARM_ARCH "armv8-a" CACHE STRING "" FORCE)
+# ggml is compiled for one ARM level. armv8-a is the floor that runs on every phone, but it has no
+# SDOT/UDOT and no fp16 arithmetic: the Q4_K matmul then falls back to the slow path, which is most
+# of the gap against an app built for a modern phone. armv8.2 with dotprod and fp16 is what every
+# armv8.2 device from 2018 on has, and what a PocketPal-class build is compiled for.
+# A build that must run on older hardware can pass -DsaduArmBaseline=armv8-a.
+set(SADU_ARM_BASELINE "armv8.2-a+dotprod+fp16" CACHE STRING "ggml -march for arm64")
+set(GGML_CPU_ARM_ARCH "${SADU_ARM_BASELINE}" CACHE STRING "" FORCE)
 
 FetchContent_MakeAvailable(llama_cpp)
 
