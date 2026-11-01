@@ -71,11 +71,10 @@ object ChatPrompt {
             sb.append("The message carries web results: answer from them, in your own words, and ")
             sb.append("say the answer comes from a web search.")
         } else if (canSearch) {
-            sb.append("You can look things up: when the answer needs a fact you cannot know - ")
-            sb.append("news, prices, a business, a place, a person, something recent - reply with ")
-            sb.append("exactly one line, SEARCH: followed by a short query, and nothing else. ")
-            sb.append("The app searches and asks you again with the results. Do not ask for a ")
-            sb.append("search for anything you already know.")
+            // One short line, not a paragraph: every token here is read on every message.
+            sb.append("For a fact you cannot know (news, prices, a place, a person), reply only ")
+            sb.append("with SEARCH: <short query>; the app searches and asks you again. ")
+            sb.append("Never search for what you already know.")
         }
         return sb.toString()
     }

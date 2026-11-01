@@ -96,7 +96,25 @@ class Assistant(
     var lastActionClaim = false
         private set
 
+    /** The numbers for the last Chat-mode message, for the log, or "" when none have run. */
+    fun lastChatTiming(): String = chatTiming.line()
+
+    private val chatTiming = ChatTiming()
+
     fun respond(text: String, onDelta: (String) -> Unit = {}): String {
+        val chat = mode() == Mode.Chat
+        if (chat) chatTiming.begin()
+        try {
+            val reply = answer(text, onDelta)
+            if (chat) chatTiming.done(reply.length)
+            return reply
+        } catch (e: Throwable) {
+            if (chat) chatTiming.done(0, e.message)
+            throw e
+        }
+    }
+
+    private fun answer(text: String, onDelta: (String) -> Unit): String {
         answeredWithModel = false
         lastReplyTruncated = false
         lastActionClaim = false
@@ -245,9 +263,16 @@ class Assistant(
         onDelta: (String) -> Unit,
     ): String {
         val gate = if (current == Mode.Control) StreamGate(onDelta) else null
+        val request = requestFor(text, current, toolResults = done, retry = retry)
+        if (current == Mode.Chat) chatTiming.request(request.system.length + request.user.length)
         return try {
-            brain.generateStream(requestFor(text, current, toolResults = done, retry = retry)) { delta ->
-                if (gate == null) onDelta(delta) else gate.feed(delta)
+            brain.generateStream(request) { delta ->
+                if (gate == null) {
+                    if (current == Mode.Chat) chatTiming.firstToken()
+                    onDelta(delta)
+                } else {
+                    gate.feed(delta)
+                }
             }
         } finally {
             gate?.finish()

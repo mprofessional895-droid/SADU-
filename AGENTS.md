@@ -485,3 +485,28 @@ and this command set; harness is `tools/functiongemma_eval.py`.
 - The workspace APK is built with `-I /tmp/skip-native.gradle` because this box has a 4 GB cgroup
   and the llama.cpp build dies in it. The C++ was verified with `clang++ -fsyntax-only` against
   the fetched llama.cpp headers; the .so itself has to be built on a machine with more memory.
+
+## Chat mode: where the time went (v0.28)
+
+Measured prompt sizes of real Chat turns (Qwen tokenizer, `vocab_only`), same history, same question:
+
+| prompt | tokens |
+|---|---|
+| turn 1 | 165 |
+| turn 2 | 274 |
+| turn 3 | 338 |
+| PocketPal-shaped turn 3 | 212 |
+| the new user turn alone | 20 |
+
+The prompt was not the problem; **re-reading it every message was**. Until v0.27 the native engine
+cleared the KV memory on every call, so each Chat message re-prefilled all 338 tokens (prefill is
+the expensive half: on the measurement box 369 tokens of prefill took 279.67 s while 120 tokens of
+generation took 8.2 s). PocketPal keeps its cache and re-prefills only the new ~20 tokens, which is
+exactly the 6x the user saw. With the prefix cache in `llama_jni.cpp` Chat mode inherits the fix.
+
+MediaPipe (`.task`) has no cross-turn KV reuse in 0.10.x - it opens a new session per call - so on
+that engine the only lever is prompt size, which is why the Chat instruction was trimmed
+744 -> 596 chars (~42 tokens per turn).
+
+`ChatTiming` logs one line per Chat message - `chat total=..ms ttft=..ms requests=.. prompt=..tok~ reply=..tok~`
+under the tag `SaduTiming`. Control mode never uses it.
