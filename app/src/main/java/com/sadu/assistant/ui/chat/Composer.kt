@@ -22,6 +22,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
@@ -63,9 +69,7 @@ fun Composer(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = Dimens.gutter, end = Dimens.gutter, top = 6.dp, bottom = 8.dp)
-            .clip(shape)
-            .background(Ink.Card)
-            .border(1.dp, Ink.Border, shape)
+            .softCard()
             .padding(horizontal = 10.dp, vertical = 6.dp),
     ) {
         SaduTextField(
@@ -135,6 +139,34 @@ private fun ComposerButton(
             )
             .clickable(enabled = enabled, onClickLabel = label, onClick = onClick)
             .padding(12.dp),
+    )
+}
+
+/**
+ * A card that fades out at the top and bottom, so the composer reads as part of the page
+ * rather than as a box sitting on it.
+ */
+private fun Modifier.softCard() = this.drawBehind {
+    val radius = CornerRadius(26.dp.toPx())
+    val outline = Path().apply {
+        addRoundRect(RoundRect(0f, 0f, size.width, size.height, radius))
+    }
+    drawPath(
+        path = outline,
+        brush = Brush.verticalGradient(
+            listOf(
+                Ink.Border.copy(alpha = 0f),
+                Ink.Border.copy(alpha = 0.85f),
+                Ink.Border.copy(alpha = 0.3f),
+            )
+        ),
+        style = Stroke(width = 1.dp.toPx()),
+    )
+    drawRoundRect(
+        brush = Brush.verticalGradient(
+            listOf(Ink.Card.copy(alpha = 0.94f), Ink.Card.copy(alpha = 0.58f))
+        ),
+        cornerRadius = radius,
     )
 }
 
