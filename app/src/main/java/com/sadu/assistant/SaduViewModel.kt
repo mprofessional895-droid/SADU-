@@ -421,6 +421,11 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
 
     // ------------------------------------------------------------------ sections
 
+    /** The home screen's one gesture: show the conversation. */
+    fun goToChat() {
+        selectTab(Tab.Conversations)
+    }
+
     fun selectTab(next: Tab) {
         tab = next
         if (next == Tab.Actions || next == Tab.Settings) refreshRuntime()
