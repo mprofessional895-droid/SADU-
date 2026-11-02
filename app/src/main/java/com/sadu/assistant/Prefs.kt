@@ -75,6 +75,16 @@ class Prefs(ctx: Context) {
         get() = ContextBudget.clamp(p.getInt("context", ContextBudget.Default))
         set(v) = p.edit().putInt("context", ContextBudget.clamp(v)).apply()
 
+    /** How hard the on-device model may push: Performance, Balanced or Saver. */
+    var perfMode: String
+        get() = p.getString("perf_mode", null) ?: "balanced"
+        set(v) = p.edit().putString("perf_mode", v).apply()
+
+    /** Keep a reply alive in the background while the user is elsewhere. */
+    var backgroundGeneration: Boolean
+        get() = p.getBoolean("background_generation", true)
+        set(v) = p.edit().putBoolean("background_generation", v).apply()
+
     /**
      * Which on-device engine runs the model: MediaPipe's `.task` bundle or llama.cpp's `.gguf`
      * file. Both are kept, so switching back is instant. Anything unreadable means MediaPipe.

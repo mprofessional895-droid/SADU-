@@ -182,6 +182,21 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeLastPerf(JNIEnv *env, jobject, j
     return toJava(env, session->perf);
 }
 
+// Threads are changed between turns, never during one: llama.cpp rewrites its thread pool on
+// this call, so letting a hot phone quietly slow itself down costs nothing when it is idle.
+JNIEXPORT void JNICALL
+Java_com_sadu_assistant_brain_LlamaEngine_nativeSetThreads(JNIEnv *, jobject, jlong handle,
+                                                           jint nThreads) {
+    Session *session = sessionOf(handle);
+    if (session == nullptr || nThreads <= 0) return;
+    // Never wait on a running turn: the next one will pick the value up anyway.
+    std::unique_lock<std::mutex> guard(session->busy, std::try_to_lock);
+    if (!guard.owns_lock()) return;
+    llama_set_n_threads(session->ctx, nThreads, nThreads);
+    LOGI("threads now %d", nThreads);
+}
+
+
 JNIEXPORT jstring JNICALL
 Java_com_sadu_assistant_brain_LlamaEngine_nativeApplyTemplate(
         JNIEnv *env, jobject, jlong handle, jobjectArray roles, jobjectArray contents) {
