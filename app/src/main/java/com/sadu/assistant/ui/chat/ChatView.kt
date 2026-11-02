@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
@@ -164,8 +165,8 @@ fun ChatView(
                     contentPadding = PaddingValues(
                         start = Dimens.gutter,
                         end = Dimens.gutter,
-                        top = 8.dp,
-                        bottom = 12.dp,
+                        top = 26.dp,
+                        bottom = 34.dp,
                     ),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
@@ -196,6 +197,35 @@ fun ChatView(
                     }
                 }
             }
+
+            // The conversation dissolves into the page instead of starting and stopping on a
+            // hard edge - the answer reads as text on the screen, not as a card in a box.
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(30.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Ink.Background,
+                            0.55f to Ink.Background.copy(alpha = 0.55f),
+                            1f to Color.Transparent,
+                        )
+                    ),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.5f to Ink.Background.copy(alpha = 0.72f),
+                            1f to Ink.Background,
+                        )
+                    ),
+            )
         }
 
         if (error != null) {
