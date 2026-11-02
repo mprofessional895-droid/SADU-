@@ -1,8 +1,8 @@
-Drop the home-screen artwork here as exactly: hero.png
+Home artwork
 
-Any PNG/JPG the Android BitmapFactory reads works. Use a portrait image with the
-subject high and empty dark space at the bottom, because the app crops to fill the
-screen and draws the greeting over the lower part.
+hero.jpg (or hero.png) is drawn full-screen on the home screen, fitted so nothing is
+cropped, over a black page. Replace the file to change the artwork - no code changes,
+just rebuild the APK.
 
-The file is loaded at runtime, so replacing it does not change any code - just
-rebuild the APK.
+Best source: portrait or square art with the subject centred and dark edges, so it
+blends into the black background.

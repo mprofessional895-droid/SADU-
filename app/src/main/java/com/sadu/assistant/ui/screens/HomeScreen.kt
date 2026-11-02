@@ -114,7 +114,7 @@ fun HomeContent(
             Image(
                 bitmap = hero,
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsScale(breath),
@@ -245,22 +245,26 @@ private fun HeroFallback() {
 }
 
 /**
- * Reads `assets/hero.png` if it is there. Any format BitmapFactory knows works, and a large
- * file is sampled down so the screen never holds more pixels than it can show.
+ * Reads the home artwork from the assets folder, highest quality first. Any format
+ * BitmapFactory knows works, and a large file is sampled down so the screen never holds more
+ * pixels than it can show.
  */
 @Composable
 private fun rememberHero(): androidx.compose.ui.graphics.ImageBitmap? {
     val ctx = LocalContext.current
     return remember(ctx) {
-    runCatching {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        ctx.assets.open(HERO).use { BitmapFactory.decodeStream(it, null, bounds) }
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= 1200) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        ctx.assets.open(HERO).use { BitmapFactory.decodeStream(it, null, opts)?.asImageBitmap() }
-    }.getOrNull()
+        HERO_FILES.firstNotNullOfOrNull { name -> decode(ctx, name) }
     }
 }
 
-private const val HERO = "hero.png"
+private fun decode(ctx: android.content.Context, name: String): androidx.compose.ui.graphics.ImageBitmap? =
+    runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        ctx.assets.open(name).use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= 1400) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        ctx.assets.open(name).use { BitmapFactory.decodeStream(it, null, opts)?.asImageBitmap() }
+    }.getOrNull()
+
+private val HERO_FILES = listOf("hero.jpg", "hero.png", "hero.webp")
