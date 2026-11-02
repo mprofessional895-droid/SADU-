@@ -68,5 +68,18 @@ fun SaduApp(vm: SaduViewModel) {
                 SaduNavBar(current = vm.tab, onSelect = { vm.selectTab(it) })
             }
         }
+
+        if (vm.perfOpen) {
+            PerformancePanel(
+                onClose = { vm.closePerformance() },
+                onMode = { vm.choosePerfMode(it) },
+                backgroundOn = vm.backgroundOn,
+                onBackground = { vm.setBackgroundGeneration(it) },
+                onUnload = {
+                    vm.releaseModelIfIdle("you asked")
+                    vm.closePerformance()
+                },
+            )
+        }
     }
 }
