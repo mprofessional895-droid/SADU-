@@ -15,6 +15,8 @@ data class ChatMsg(
     val thinking: String? = null,
     /** When each phase of this turn happened, if it was measured. */
     val stats: TurnStats? = null,
+    /** 1 when the reader found this answer helpful, -1 when not, 0 when they said nothing. */
+    val rating: Int = 0,
 )
 
 /**
@@ -98,7 +100,8 @@ class ChatHistory(private val ctx: Context) {
                             .put("tm", m.stats?.thinkingMs ?: -1L)
                             .put("pm", m.stats?.promptMs ?: -1L)
                             .put("tt", m.stats?.ttftMs ?: -1L)
-                            .put("gs", m.stats?.genTokS ?: -1.0),
+                            .put("gs", m.stats?.genTokS ?: -1.0)
+                            .put("rt", m.rating),
                     )
                 }
                 root.put(
@@ -133,6 +136,7 @@ class ChatHistory(private val ctx: Context) {
                 at = m.optLong("at", created),
                 thinking = m.optString("th").takeIf { it.isNotBlank() },
                 stats = readStats(m),
+                rating = m.optInt("rt", 0),
             )
         }
         return ChatSession(

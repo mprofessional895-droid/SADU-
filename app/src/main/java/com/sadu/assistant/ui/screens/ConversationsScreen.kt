@@ -12,6 +12,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Language
@@ -97,6 +99,8 @@ import com.sadu.assistant.ui.components.SaduTextField
 import com.sadu.assistant.ui.components.ModeChip
 import com.sadu.assistant.ui.components.RoundIconButton
 import com.sadu.assistant.ui.components.StatusPill
+import com.sadu.assistant.ui.chat.ChatSuggestions
+import com.sadu.assistant.ui.chat.ChatView
 import com.sadu.assistant.ui.components.SurfaceCard
 import com.sadu.assistant.ui.rememberReducedMotion
 
@@ -146,6 +150,10 @@ fun ConversationsScreen(vm: SaduViewModel) {
             neededPermission = vm.neededPermission,
             onAllowPermission = { vm.permissionAnswered() },
             onSkipPermission = { vm.clearNeededPermission() },
+            onReadAloud = { vm.readAloud(it) },
+            onRate = { id, up -> vm.rate(id, up) },
+            onRegenerate = { vm.regenerate() },
+            suggestions = ChatSuggestions.all,
         )
     }
 }
@@ -346,540 +354,52 @@ fun Chat(
     neededPermission: String? = null,
     onAllowPermission: () -> Unit = {},
     onSkipPermission: () -> Unit = {},
+    onReadAloud: (String) -> Unit = {},
+    onRate: (Long, Boolean) -> Unit = { _, _ -> },
+    onRegenerate: () -> Unit = {},
+    suggestions: List<String> = emptyList(),
 ) {
-    val listState = rememberLazyListState()
-    val focus = remember { FocusRequester() }
-    val reduced = rememberReducedMotion()
-
-    LaunchedEffect(focusToken) {
-        if (focusToken > 0) focus.requestFocus()
-    }
-
-    val thinking = state == AiState.Processing && streamText == null
-    val itemCount = messages.size +
-        (if (streamText != null) 1 else 0) +
-        (if (thinking || streamingThought != null || thoughtLive) 1 else 0)
-
-    // A message being sent throws a short burst out of the composer.
-    var burst by remember { mutableIntStateOf(0) }
-    var follow by remember { mutableStateOf(true) }
-    val keyboard = LocalSoftwareKeyboardController.current
-    val focusManager = LocalFocusManager.current
-    val send: () -> Unit = {
-        burst++
-        follow = true
-        keyboard?.hide()
-        focusManager.clearFocus(force = true)
-        onSend()
-    }
-
-    // Reading back through the conversation must not be yanked away. The list follows a new
-    // answer only while the reader is already at the bottom, and stops following the moment
-    // they drag it upwards - otherwise every new token pulled them back down.
-    val atBottom by remember {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            val last = info.visibleItemsInfo.lastOrNull()
-            last == null || last.index >= info.totalItemsCount - 2
-        }
-    }
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress && !atBottom) follow = false
-        if (atBottom) follow = true
-    }
-    LaunchedEffect(itemCount) {
-        if (itemCount > 0 && follow) listState.scrollToItem(itemCount - 1)
-    }
-    LaunchedEffect(streamText, streamingThought) {
-        if (streamText != null && itemCount > 0 && follow) listState.scrollToItem(itemCount - 1)
-        if (streamingThought != null && itemCount > 0 && follow) listState.scrollToItem(itemCount - 1)
-    }
-
-    Box(Modifier.fillMaxSize()) {
-    ThoughtField(
-        state = state,
-        streaming = streamText != null,
-        burstToken = burst,
-        reducedMotion = reduced,
-        modifier = Modifier.fillMaxSize(),
+    val clipboard = LocalClipboardManager.current
+    ChatView(
+        title = title,
+        messages = messages,
+        mode = mode,
+        draft = draft,
+        streamText = streamText,
+        streamThought = streamingThought,
+        thoughtLive = thoughtLive,
+        thinkingNote = thinkingNote,
+        busy = state == AiState.Processing,
+        canStop = canStop,
+        internetOn = internetOn,
+        answeredBy = answeredBy,
+        error = error,
+        suggestions = suggestions,
+        focusToken = focusToken,
+        onBack = onBack,
+        onNewChat = onNewChat,
+        onMode = onMode,
+        onDraft = onDraftChange,
+        onSend = onSend,
+        onStop = onStop,
+        onMic = onMic,
+        onInternet = onInternet,
+        onDismissError = onDismissError,
+        onCopy = { clipboard.setText(AnnotatedString(it)) },
+        onRead = onReadAloud,
+        onRate = onRate,
+        onRegenerate = onRegenerate,
     )
-    Column(Modifier.fillMaxSize().background(Ink.Background).imePadding()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = Dimens.gutter),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                contentDescription = "Back to conversations",
-                tint = Ink.Text,
-                modifier = Modifier
-                    .size(Dimens.touch)
-                    .clip(CircleShape)
-                    .clickable(onClickLabel = "Back to conversations", onClick = onBack)
-                    .padding(14.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = title,
-                color = Ink.Text,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            ModeChip(mode = mode, onToggle = { onMode(if (mode == Mode.Control) Mode.Chat else Mode.Control) })
-            Spacer(Modifier.width(4.dp))
-            Icon(
-                imageVector = Icons.Rounded.Add,
-                contentDescription = "New chat",
-                tint = Ink.Text,
-                modifier = Modifier
-                    .size(Dimens.touch)
-                    .clip(CircleShape)
-                    .clickable(onClickLabel = "New chat", onClick = onNewChat)
-                    .padding(14.dp),
-            )
-        }
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = Dimens.gutter, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            itemsIndexed(messages, key = { _, m -> m.id }) { index, msg ->
-                val previous = messages.getOrNull(index - 1)
-                val showTime = previous == null ||
-                    (msg.at - previous.at) >= AssistantText.TIMESTAMP_GAP_MS
-                if (msg.fromUser) {
-                    UserBubble(msg, showTime)
-                } else {
-                    AssistantBubble(msg, showTime, thinking = msg.thinking, stats = msg.stats)
-                    if (msg.thinking != null) {
-                        ThinkingCard(text = msg.thinking, live = false, stats = msg.stats)
-                    }
-                }
-            }
-
-            if (streamText != null) {
-                item(key = "stream") {
-                    AssistantBubble(
-                        msg = ChatMsg(streamText, fromUser = false),
-                        showTime = false,
-                        streaming = true,
-                    )
-                }
-            }
-
-            if (streamingThought != null || (thinking && thoughtLive)) {
-                item(key = "thought-live") {
-                    ThinkingCard(
-                        text = streamingThought.orEmpty(),
-                        live = thoughtLive || streamingThought == null,
-                        note = thinkingNote,
-                        stats = null,
-                    )
-                }
-            } else if (thinking) {
-                item(key = "thinking") {
-                    ThinkingBubble(note = thinkingNote)
-                }
-            }
-
-            // The composer floats over the list, so the last line needs room to clear it.
-            item(key = "tail") { Spacer(Modifier.height(12.dp)) }
-        }
-
-        if (answeredBy != null) {
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = answeredBy,
-                color = Ink.TextDim,
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
-
-        if (neededPermission != null) {
-            PermissionAsk(
-                permission = neededPermission,
-                onResult = onAllowPermission,
-                onSkip = onSkipPermission,
-            )
-        }
-
-        if (error != null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Dimens.gutter, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = error,
-                    color = Ink.Text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                Spacer(Modifier.width(8.dp))
-                GhostButton("Dismiss", onDismissError)
-            }
-        }
-
-        // One card holds the writing area and its controls, so Send and Mic belong to the
-        // message being written instead of floating beside it.
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = Dimens.gutter, end = Dimens.gutter, top = 6.dp, bottom = 10.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .background(Ink.Card)
-                .border(1.dp, Ink.Border, RoundedCornerShape(26.dp))
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-        ) {
-            SaduTextField(
-                value = draft,
-                onValueChange = onDraftChange,
-                placeholder = "Ask me anything",
-                maxLines = 5,
-                onSend = send,
-                contentDescription = "Message",
-                imeAction = ImeAction.Default,
-                bare = true,
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                InternetChip(on = internetOn, onToggle = onInternet)
-                Spacer(Modifier.weight(1f))
-                RoundIconButton(
-                    icon = Icons.Rounded.Mic,
-                    contentDescription = "Talk to Sadu",
-                    onClick = onMic,
-                    diameter = 42.dp,
-                )
-                Spacer(Modifier.width(8.dp))
-                if (canStop) {
-                    RoundIconButton(
-                        icon = Icons.Rounded.Stop,
-                        contentDescription = "Stop answering",
-                        onClick = onStop,
-                        diameter = 42.dp,
-                        filled = true,
-                    )
-                } else {
-                    val ready = draft.isNotBlank()
-                    RoundIconButton(
-                        icon = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = "Send",
-                        onClick = send,
-                        diameter = 42.dp,
-                        filled = ready,
-                        showBorder = !ready,
-                        enabled = ready,
-                    )
-                }
-            }
-        }
-    }
-    }
-}
-
-@Composable
-private fun TimeMarker(millis: Long) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp),
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = AssistantText.clock(millis),
-            color = Ink.TextDim,
-            style = MaterialTheme.typography.labelSmall,
+    if (neededPermission != null) {
+        PermissionAsk(
+            permission = neededPermission,
+            onResult = onAllowPermission,
+            onSkip = onSkipPermission,
         )
     }
 }
 
-@Composable
-private fun UserBubble(msg: ChatMsg, showTime: Boolean) {
-    Column(Modifier.fillMaxWidth()) {
-        if (showTime) TimeMarker(msg.at)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            Box(
-                modifier = Modifier
-                    .widthIn(max = 300.dp)
-                    .clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
-                    .background(Ink.Elevated)
-                    .border(1.dp, Ink.Border, RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-            ) {
-                Text(
-                    text = msg.text,
-                    color = Ink.Text,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-        }
-    }
-}
-
-/**
- * Sadu's turn. No bubble and no colour: long answers are what people read most, so the
- * text sits on the background at full width with a hairline rule marking whose turn it
- * is. Only the caret moves while the answer arrives.
- */
-@Composable
-private fun AssistantBubble(
-    msg: ChatMsg,
-    showTime: Boolean,
-    streaming: Boolean = false,
-    thinking: String? = null,
-    stats: TurnStats? = null,
-) {
-    Column(Modifier.fillMaxWidth()) {
-        if (showTime) TimeMarker(msg.at)
-        Row(
-            modifier = Modifier.height(IntrinsicSize.Min),
-            horizontalArrangement = Arrangement.Start,
-        ) {
-            Box(
-                Modifier
-                    .width(2.dp)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(1.dp))
-                    .background(if (streaming) Ink.Accent.copy(alpha = 0.6f) else Ink.Border),
-            )
-            Spacer(Modifier.width(14.dp))
-            Row(verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth()) {
-                MarkdownText(
-                    text = msg.text,
-                    color = Ink.Text,
-                    accent = Ink.Accent,
-                    size = 15,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                if (streaming) {
-                    Spacer(Modifier.width(3.dp))
-                    Box(
-                        Modifier
-                            .size(width = 6.dp, height = 14.dp)
-                            .background(Ink.Text),
-                    )
-                }
-            }
-        }
-        if (!streaming && stats != null) TimingLine(stats)
-    }
-}
-
-/** What this answer cost, in one dim line. Only what was actually measured is shown. */
-@Composable
-private fun TimingLine(stats: TurnStats) {
-    val parts = buildList {
-        stats.thinkingMs?.let { add("Thinking " + seconds(it)) }
-        stats.ttftMs?.let { add("TTFT " + millis(it)) }
-        stats.promptMs?.let { add("Tokenization " + millis(it)) }
-        stats.genTokS?.let { add(String.format(java.util.Locale.US, "%.1f tok/s", it)) }
-    }
-    if (parts.isEmpty()) return
-    Text(
-        text = parts.joinToString("  ·  "),
-        color = Ink.TextDim,
-        style = MaterialTheme.typography.labelSmall,
-        modifier = Modifier.padding(start = 16.dp, top = 6.dp, bottom = 2.dp),
-    )
-}
-
-private fun seconds(ms: Long): String =
-    if (ms < 1000) "${ms}ms" else String.format(java.util.Locale.US, "%.1fs", ms / 1000.0)
-
-private fun millis(ms: Long): String =
-    if (ms < 1000) "${ms}ms" else String.format(java.util.Locale.US, "%.2fs", ms / 1000.0)
-
-/**
- * The model's working-out, folded away.
- *
- * While it is still thinking the card is open and follows the text; the moment the answer
- * starts it collapses to a single line that says how long it thought, and tapping that line
- * opens the whole thing again. The tags the model wraps its reasoning in never reach the screen.
- */
-@Composable
-private fun ThinkingCard(
-    text: String,
-    live: Boolean,
-    note: String? = null,
-    stats: TurnStats? = null,
-) {
-    var open by rememberSaveable(text) { mutableStateOf(live) }
-    LaunchedEffect(live) { if (live) open = true }
-    val shape = RoundedCornerShape(16.dp)
-    val duration = stats?.thinkingMs?.let { seconds(it) }
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(Ink.Card.copy(alpha = 0.75f))
-            .border(1.dp, Ink.Border, shape),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClickLabel = if (open) "Hide thinking" else "Show thinking") { open = !open }
-                .padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ThinkingDots(active = live)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = if (live) "Thinking" else "Thought" + (duration?.let { " · $it" } ?: ""),
-                color = Ink.Text,
-                style = MaterialTheme.typography.labelLarge,
-            )
-            if (note != null && live && note.isNotBlank()) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = note,
-                    color = Ink.TextDim,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            Icon(
-                imageVector = if (open) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                contentDescription = null,
-                tint = Ink.TextDim,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        AnimatedVisibility(visible = open) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 240.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 16.dp, end = 14.dp, bottom = 12.dp),
-            ) {
-                Text(
-                    text = text.ifBlank { "…" },
-                    color = Ink.TextDim,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-    }
-}
-
-/** Three small dots that only move while the model is actually thinking. */
-@Composable
-private fun ThinkingDots(active: Boolean) {
-    val reduced = rememberReducedMotion()
-    val alpha by if (active && !reduced) {
-        val t = rememberInfiniteTransition(label = "thought")
-        t.animateFloat(
-            initialValue = 0.3f,
-            targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
-            label = "dot",
-        )
-    } else {
-        remember { mutableFloatStateOf(0.75f) }
-    }
-    Box(
-        Modifier
-            .size(8.dp)
-            .clip(CircleShape)
-            .background(Ink.Accent.copy(alpha = alpha)),
-    )
-}
-
-/** The Internet switch, where the message is written rather than buried in Settings. */
-@Composable
-private fun InternetChip(on: Boolean, onToggle: (Boolean) -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
-    Row(
-        modifier = Modifier
-            .clip(shape)
-            .clickable(onClickLabel = if (on) "Turn Internet off" else "Turn Internet on") { onToggle(!on) }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Rounded.Language,
-            contentDescription = null,
-            tint = if (on) Ink.Accent else Ink.TextDim,
-            modifier = Modifier.size(16.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = "Internet",
-            color = if (on) Ink.Text else Ink.TextDim,
-            style = MaterialTheme.typography.labelSmall,
-        )
-        Spacer(Modifier.width(6.dp))
-        Box(
-            Modifier
-                .size(width = 22.dp, height = 12.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(if (on) Ink.Accent else Ink.Border),
-        ) {
-            Box(
-                Modifier
-                    .align(if (on) Alignment.CenterEnd else Alignment.CenterStart)
-                    .padding(2.dp)
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(Ink.Background),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ThinkingBubble(note: String? = null) {
-    val reduced = rememberReducedMotion()
-    val transition = rememberInfiniteTransition(label = "thinking")
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start,
-    ) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp))
-                .background(Ink.Card)
-                .border(1.dp, Ink.Border, RoundedCornerShape(4.dp, 18.dp, 18.dp, 18.dp))
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            repeat(3) { i ->
-                val rise by transition.animateFloat(
-                    initialValue = 0f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(620, delayMillis = i * 130, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse,
-                    ),
-                    label = "dot$i",
-                )
-                Box(
-                    Modifier
-                        .offset(y = (-3f * if (reduced) 0f else rise).dp)
-                        .size(5.dp)
-                        .clip(CircleShape)
-                        .background(Ink.TextDim),
-                )
-                if (i < 2) Spacer(Modifier.width(5.dp))
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = note?.takeIf { it.isNotBlank() } ?: "Thinking",
-                color = Ink.TextDim,
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
-    }
-}
 
 /** The plain-English name of a permission, for the one-button ask in the chat. */
 fun permissionTitle(permission: String): String = when (permission) {

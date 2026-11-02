@@ -446,6 +446,8 @@ fun SaduTextField(
         androidx.compose.ui.text.input.ImeAction.Send,
     /** True when the caller draws the card itself - the chat composer does. */
     bare: Boolean = false,
+    /** Applied to the field itself, for focus and scroll requests. */
+    fieldModifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier
@@ -474,6 +476,7 @@ fun SaduTextField(
             modifier = Modifier
                 .weight(1f)
                 .padding(vertical = 12.dp)
+                .then(fieldModifier)
                 .then(
                     if (contentDescription != null) {
                         Modifier.semantics { this.contentDescription = contentDescription }

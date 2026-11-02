@@ -543,15 +543,15 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
      * Sends a message. Used by the composer, by voice results and by the
      * quick actions on the home screen.
      */
-    fun submit(raw: String) {
+    fun submit(raw: String, echo: Boolean = true) {
         val text = raw.trim()
         lastAsked = text
         if (text.isEmpty() || aiState == AiState.Processing || aiState == AiState.Listening) return
         errorText = null
         answeredBy = null
         voice.stopSpeaking()
-        composerText = ""
-        push(ChatMsg(text, fromUser = true))
+        if (echo) composerText = ""
+        if (echo) push(ChatMsg(text, fromUser = true))
         sessions = sessions.map {
             if (it.id == currentId && it.title == NEW_CHAT_TITLE) it.copy(title = titleOf(text)) else it
         }
@@ -1108,6 +1108,40 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     fun editChatInstructions(text: String) {
         chatInstructions = text.take(ChatPrompt.MAX_EXTRA)
         prefs.chatInstructions = chatInstructions
+    }
+
+    /** Reads an answer aloud when the reader asks for it, whatever the speaking setting says. */
+    fun readAloud(text: String) {
+        voice.speak(text, enabled = true)
+    }
+
+    /** Records whether an answer helped; tapping the same choice again clears it. */
+    fun rate(messageId: Long, up: Boolean) {
+        val want = if (up) 1 else -1
+        sessions = sessions.map { session ->
+            if (session.id != currentId) session else session.copy(
+                messages = session.messages.map { m ->
+                    if (m.id == messageId) m.copy(rating = if (m.rating == want) 0 else want) else m
+                },
+            )
+        }
+        persist()
+    }
+
+    /**
+     * Asks the last question again and throws away the answer it produced.
+     * Nothing else in the conversation is touched, so the same context is used.
+     */
+    fun regenerate() {
+        if (aiState == AiState.Processing) return
+        val session = sessions.firstOrNull { it.id == currentId } ?: return
+        val lastUser = session.messages.lastOrNull { it.fromUser }?.text ?: return
+        val keep = session.messages.subList(0, session.messages.indexOfLast { it.fromUser })
+        sessions = sessions.map {
+            if (it.id == currentId) it.copy(messages = keep.toList()) else it
+        }
+        persist()
+        submit(lastUser)
     }
 
     /** Stops the on-device model mid-answer, when the user asks for that. */
