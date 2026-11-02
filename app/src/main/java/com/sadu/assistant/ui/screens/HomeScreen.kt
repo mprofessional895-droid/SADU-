@@ -1,15 +1,10 @@
 package com.sadu.assistant.ui.screens
 
-import android.graphics.BitmapFactory
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,254 +12,492 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Memory
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.sadu.assistant.AiState
-import com.sadu.assistant.AssistantText
 import com.sadu.assistant.ChatMsg
-import com.sadu.assistant.Mode
 import com.sadu.assistant.SaduViewModel
+import com.sadu.assistant.Tab
 import com.sadu.assistant.ui.Dimens
 import com.sadu.assistant.ui.Ink
-import com.sadu.assistant.ui.components.StatusPill
-import com.sadu.assistant.ui.rememberReducedMotion
-import kotlin.math.min
+import com.sadu.assistant.ui.home.NeuralSphere
+
+private val Cyan = Color(0xFF2EE6D6)
+private const val VERSION = "v0.35"
 
 /**
- * The home screen is the assistant itself: one hero visual, the wordmark, and a single line
- * of guidance. Everything that used to sit under it - mode switch, last answer, composer,
- * mic, quick actions - now lives in the Chats tab, so this screen has one job: to feel calm
- * and open and to hand over to a conversation when tapped.
+ * One quiet instrument panel: who Sadu is, what it is doing right now, and a single door
+ * into the conversation.
  */
 @Composable
 fun HomeScreen(vm: SaduViewModel) {
     HomeContent(
-        greeting = vm.greeting,
         state = vm.aiState,
-        level = vm.micLevel,
-        error = vm.errorText,
-        answeredBy = vm.answeredBy,
-        note = vm.statusNote,
+        greeting = vm.greeting,
         lastTurn = vm.lastTurn,
-        mode = vm.mode,
-        onMode = { vm.chooseMode(it) },
-        onMic = { vm.startListening() },
-        onType = { vm.askForText(null) },
-        onQuickAction = {},
-        onDismissError = { vm.dismissError() },
+        modelReady = vm.modelReady,
+        cloudReady = vm.cloudReady,
+        note = vm.statusNote,
+        error = vm.errorText,
         onOpenChat = { vm.goToChat() },
+        onSettings = { vm.selectTab(Tab.Settings) },
     )
 }
 
 @Composable
 fun HomeContent(
-    greeting: String,
     state: AiState,
-    level: Float,
-    error: String?,
-    answeredBy: String? = null,
-    note: String?,
-    lastTurn: List<ChatMsg>,
-    mode: Mode,
-    onMode: (Mode) -> Unit,
-    onMic: () -> Unit,
-    onType: () -> Unit,
-    onQuickAction: () -> Unit = {},
-    onDismissError: () -> Unit,
+    greeting: String = "",
+    lastTurn: List<ChatMsg> = emptyList(),
+    modelReady: Boolean = false,
+    cloudReady: Boolean = false,
+    note: String? = null,
+    error: String? = null,
     onOpenChat: () -> Unit = {},
+    onSettings: () -> Unit = {},
 ) {
-    val reduced = rememberReducedMotion()
-    val hero = rememberHero()
-
-    // The hero breathes very slowly, so the screen is alive without anything moving fast.
-    val breath by if (!reduced) {
-        rememberInfiniteTransition(label = "hero").animateFloat(
-            initialValue = 1f,
-            targetValue = 1.035f,
-            animationSpec = infiniteRepeatable(tween(9000), RepeatMode.Reverse),
-            label = "breath",
-        )
-    } else {
-        remember { androidx.compose.runtime.mutableFloatStateOf(1f) }
+    val engine = when {
+        modelReady -> "On Device"
+        cloudReady -> "Cloud"
+        else -> "No Model"
     }
 
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Ink.Background)
-            .clickable(onClickLabel = "Open chat", onClick = onOpenChat),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = Dimens.gutter),
     ) {
-        if (hero != null) {
-            Image(
-                bitmap = hero,
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
+        Header(online = engine != "No Model", onSettings = onSettings)
+        Spacer(Modifier.height(22.dp))
+        HeroHeading()
+        Spacer(Modifier.height(6.dp))
+
+        Box(
+            modifier = Modifier.fillMaxWidth().height(330.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            NeuralSphere(state = state, modifier = Modifier.fillMaxSize())
+            Column(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsScale(breath),
+                    .align(Alignment.CenterStart)
+                    .padding(top = 44.dp)
+                    .width(94.dp),
+            ) {
+                MicroLabel("POWERED BY")
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "LOCAL AI",
+                    color = Ink.Text.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
+                )
+                Spacer(Modifier.height(8.dp))
+                SegmentedBar(active = modelReady, cloud = cloudReady)
+            }
+            NeuralCorePanel(
+                engine = engine,
+                state = state,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(top = 44.dp),
             )
-        } else {
-            HeroFallback()
         }
 
-        // The image fades into the page at the top and bottom instead of ending on an edge.
+        if (error != null) {
+            Text(
+                text = error,
+                color = Ink.Text,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
+        } else if (note != null) {
+            Text(
+                text = note,
+                color = Ink.TextDim,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
+        }
+
+        PromptCard(turn = lastTurn, greeting = greeting, onOpen = onOpenChat)
+        Spacer(Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            StatusTile(
+                icon = Icons.Rounded.Psychology,
+                label = if (state == AiState.Processing) "Thinking…" else "Think",
+                live = state == AiState.Processing,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenChat,
+            )
+            StatusTile(
+                icon = Icons.Rounded.GraphicEq,
+                label = if (state == AiState.Listening) "Listening" else "Ready",
+                live = state == AiState.Listening || state == AiState.Speaking,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenChat,
+            )
+            StatusTile(
+                icon = Icons.Rounded.Memory,
+                label = engine,
+                live = engine == "On Device",
+                modifier = Modifier.weight(1f),
+                onClick = onSettings,
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun HeroHeading() {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            text = "The Emergent Mind",
+            color = Ink.Text,
+            style = MaterialTheme.typography.headlineSmall.copy(
+                fontWeight = FontWeight.Light,
+                letterSpacing = 0.4.sp,
+            ),
+        )
+        Spacer(Modifier.height(8.dp))
         Box(
             Modifier
-                .fillMaxSize()
+                .width(56.dp)
+                .height(1.dp)
                 .background(
-                    Brush.verticalGradient(
-                        0f to Ink.Background.copy(alpha = 0.92f),
-                        0.16f to Color.Transparent,
-                        0.72f to Color.Transparent,
-                        0.92f to Ink.Background.copy(alpha = 0.88f),
-                        1f to Ink.Background,
+                    Brush.horizontalGradient(
+                        listOf(Color.White.copy(alpha = 0.55f), Color.Transparent)
                     )
-                ),
+                )
         )
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = Dimens.gutter),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(64.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "SADU",
-                    color = Ink.Text,
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Light,
-                        letterSpacing = 9.sp,
-                    ),
-                    modifier = Modifier.weight(1f),
-                )
-                StatusPill(
-                    text = AssistantText.stateLabel(state),
-                    active = state != AiState.Idle,
-                )
-            }
-
-            Spacer(Modifier.weight(1f))
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = if (error != null) error else greeting,
-                    color = if (error != null) Ink.Text else Ink.TextDim,
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                )
-                if (note != null) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = note,
-                        color = Ink.TextDim,
-                        style = MaterialTheme.typography.labelSmall,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    text = "Tap anywhere to begin",
-                    color = Ink.TextDim.copy(alpha = 0.7f),
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
-                )
-                Spacer(Modifier.height(26.dp))
-            }
-        }
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = "THINK  ·  ASSIST  ·  EVOLVE",
+            color = Ink.TextDim.copy(alpha = 0.85f),
+            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.2.sp),
+        )
     }
 }
 
-private fun Modifier.graphicsScale(scale: Float) =
-    this.graphicsLayer {
-        scaleX = scale
-        scaleY = scale
-    }
-
-/**
- * The home visual when the artwork is not shipped: a quiet lit sphere on black.
- * It is not meant to compete with the illustration - just to keep the screen whole.
- */
 @Composable
-private fun HeroFallback() {
-    Canvas(Modifier.fillMaxSize()) {
-        val cx = size.width / 2f
-        val cy = size.height * 0.44f
-        val radius = min(size.width, size.height) * 0.30f
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(
-                    Ink.Accent.copy(alpha = 0.32f),
-                    Ink.Accent.copy(alpha = 0.10f),
-                    Color.Transparent,
+private fun Header(online: Boolean, onSettings: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .padding(top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LogoMark()
+        Box(
+            Modifier
+                .padding(horizontal = 12.dp)
+                .width(1.dp)
+                .height(30.dp)
+                .background(Ink.Border)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "SADU",
+                color = Ink.Text,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Light,
+                    letterSpacing = 7.sp,
                 ),
-                center = androidx.compose.ui.geometry.Offset(cx, cy),
-                radius = radius * 2.1f,
-            ),
-            radius = radius * 2.1f,
-            center = androidx.compose.ui.geometry.Offset(cx, cy),
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Ink.Text.copy(alpha = 0.9f), Ink.Accent.copy(alpha = 0.25f), Color.Transparent),
-                center = androidx.compose.ui.geometry.Offset(cx - radius * 0.2f, cy - radius * 0.25f),
-                radius = radius,
-            ),
-            radius = radius,
-            center = androidx.compose.ui.geometry.Offset(cx, cy),
-        )
-        listOf(1.14f, 1.32f, 1.5f).forEachIndexed { i, f ->
-            drawCircle(
-                color = Ink.Accent.copy(alpha = 0.20f - i * 0.045f),
-                radius = radius * f,
-                center = androidx.compose.ui.geometry.Offset(cx, cy),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2f),
+            )
+            Text(
+                text = "YOUR PERSONAL AI",
+                color = Ink.TextDim,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    letterSpacing = 1.8.sp,
+                    fontSize = 8.sp,
+                ),
+            )
+        }
+        OnlinePill(online)
+        Spacer(Modifier.width(4.dp))
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .clickable(onClickLabel = "Settings", onClick = onSettings),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.Settings,
+                contentDescription = "Settings",
+                tint = Ink.TextDim,
+                modifier = Modifier.size(19.dp),
             )
         }
     }
 }
 
-/**
- * Reads the home artwork from the assets folder, highest quality first. Any format
- * BitmapFactory knows works, and a large file is sampled down so the screen never holds more
- * pixels than it can show.
- */
+/** The orbit mark beside the wordmark. */
 @Composable
-private fun rememberHero(): androidx.compose.ui.graphics.ImageBitmap? {
-    val ctx = LocalContext.current
-    return remember(ctx) {
-        HERO_FILES.firstNotNullOfOrNull { name -> decode(ctx, name) }
+private fun LogoMark() {
+    Canvas(Modifier.size(38.dp)) {
+        val r = size.minDimension * 0.28f
+        val c = Offset(size.width / 2f, size.height / 2f)
+        drawOrbit(c, r)
+        drawCircle(Color.White.copy(alpha = 0.9f), r, c, style = Stroke(1.2f))
+        drawCircle(Color.White.copy(alpha = 0.22f), r * 1.55f, c, style = Stroke(0.8f))
+        drawCircle(Color.White, 1.5f, Offset(c.x + r * 1.55f, c.y))
     }
 }
 
-private fun decode(ctx: android.content.Context, name: String): androidx.compose.ui.graphics.ImageBitmap? =
-    runCatching {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        ctx.assets.open(name).use { BitmapFactory.decodeStream(it, null, bounds) }
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= 1400) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        ctx.assets.open(name).use { BitmapFactory.decodeStream(it, null, opts)?.asImageBitmap() }
-    }.getOrNull()
+private fun DrawScope.drawOrbit(c: Offset, r: Float) {
+    drawOval(
+        color = Color.White.copy(alpha = 0.35f),
+        topLeft = Offset(c.x - r * 1.6f, c.y - r * 0.45f),
+        size = Size(r * 3.2f, r * 0.9f),
+        style = Stroke(0.8f),
+    )
+}
 
-private val HERO_FILES = listOf("hero.jpg", "hero.png", "hero.webp")
+@Composable
+private fun OnlinePill(online: Boolean) {
+    val dot = if (online) Cyan else Ink.TextDim
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(Ink.Card)
+            .border(1.dp, Ink.Border, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(6.dp).clip(CircleShape).background(dot))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = if (online) "Online" else "Offline",
+            color = Ink.Text.copy(alpha = 0.9f),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+        )
+    }
+}
+
+@Composable
+private fun NeuralCorePanel(engine: String, state: AiState, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier
+            .width(104.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Ink.Card.copy(alpha = 0.55f))
+            .border(1.dp, Ink.BorderSoft, RoundedCornerShape(12.dp))
+            .padding(horizontal = 9.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = "NEURAL CORE",
+            color = Ink.TextDim,
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.sp),
+        )
+        Spacer(Modifier.height(6.dp))
+        BulletRow(engine)
+        Spacer(Modifier.height(3.dp))
+        BulletRow(if (state == AiState.Idle) "Ready" else "Active")
+        Spacer(Modifier.height(3.dp))
+        BulletRow(VERSION)
+    }
+}
+
+@Composable
+private fun BulletRow(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(3.dp).clip(CircleShape).background(Ink.TextDim))
+        Spacer(Modifier.width(5.dp))
+        Text(
+            text = text,
+            color = Ink.Text.copy(alpha = 0.85f),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun SegmentedBar(active: Boolean, cloud: Boolean) {
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        repeat(7) { i ->
+            val lit = when {
+                active -> true
+                cloud -> i < 4
+                else -> false
+            }
+            Box(
+                Modifier
+                    .width(9.dp)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(if (lit) Cyan.copy(alpha = 0.85f) else Ink.Border)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MicroLabel(text: String) {
+    Text(
+        text = text,
+        color = Ink.TextDim.copy(alpha = 0.75f),
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
+    )
+}
+
+/**
+ * The last exchange, shaped like a prompt: what was asked, the head of the answer, and a
+ * way back into it. An empty history shows an invitation instead of invented text.
+ */
+@Composable
+private fun PromptCard(turn: List<ChatMsg>, greeting: String, onOpen: () -> Unit) {
+    val question = turn.firstOrNull { it.fromUser }?.text
+    val answer = turn.lastOrNull { !it.fromUser }?.text
+    val headline = answer?.lineSequence()?.firstOrNull { it.isNotBlank() }
+    val rest = headline?.let { answer.removePrefix(it).trim() }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(
+                Brush.verticalGradient(
+                    listOf(Ink.Card.copy(alpha = 0.95f), Ink.Card.copy(alpha = 0.55f))
+                )
+            )
+            .border(1.dp, Ink.Border, RoundedCornerShape(22.dp))
+            .clickable(onClickLabel = "Open chat", onClick = onOpen)
+            .padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            if (question != null) {
+                Text(
+                    text = question,
+                    color = Ink.TextDim,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                Text(
+                    text = "START A CONVERSATION",
+                    color = Ink.TextDim.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.4.sp),
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = headline ?: greeting.ifBlank { "Ask me anything." },
+                color = Ink.Text,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (!rest.isNullOrBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = rest,
+                    color = Ink.TextDim,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Ink.Elevated)
+                .border(1.dp, Ink.Border, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Rounded.ArrowForward,
+                contentDescription = null,
+                tint = Ink.Text,
+                modifier = Modifier.size(17.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusTile(
+    icon: ImageVector,
+    label: String,
+    live: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(Ink.Card.copy(alpha = 0.5f))
+            .border(1.dp, Ink.BorderSoft, RoundedCornerShape(14.dp))
+            .clickable(onClickLabel = label, onClick = onClick)
+            .padding(vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = Ink.Text.copy(alpha = 0.9f),
+            modifier = Modifier.size(17.dp),
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(4.dp)
+                    .clip(CircleShape)
+                    .background(if (live) Cyan else Ink.TextDim.copy(alpha = 0.6f))
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = label,
+                color = Ink.Text.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+

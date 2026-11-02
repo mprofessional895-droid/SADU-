@@ -99,18 +99,10 @@ class ScreensRenderTest {
     fun homeListening() {
         show {
             HomeContent(
-                greeting = "Good evening, Ada.",
                 state = AiState.Listening,
-                level = 0.72f,
-                error = null,
-                note = null,
+                greeting = "Good evening, Ada.",
                 lastTurn = emptyList(),
-                mode = Mode.Chat,
-                onMode = {},
-                onMic = {},
-                onType = {},
-                onQuickAction = {},
-                onDismissError = {},
+                modelReady = true,
             )
         }
         shoot("home-listening-360x640")
@@ -121,18 +113,11 @@ class ScreensRenderTest {
     fun homeErrorAndNoModel() {
         show {
             HomeContent(
-                greeting = "Still up.",
                 state = AiState.Error,
-                level = 0f,
+                greeting = "Still up.",
+                lastTurn = emptyList(),
                 error = "I need microphone permission before I can listen.",
                 note = "One-time setup: import a Gemma model file in Settings",
-                lastTurn = emptyList(),
-                mode = Mode.Chat,
-                onMode = {},
-                onMic = {},
-                onType = {},
-                onQuickAction = {},
-                onDismissError = {},
             )
         }
         shoot("home-error-360x640")
@@ -147,19 +132,16 @@ class ScreensRenderTest {
 
     @Test
     @Config(sdk = [34], qualifiers = "w360dp-h640dp-xhdpi")
-    fun homeControlMode() {
-        show { HomeAtRest(mode = Mode.Control) }
+    fun homeIdleAgain() {
+        show { HomeAtRest() }
         shoot("home-control-360x640")
     }
 
     @Composable
-    private fun HomeAtRest(mode: Mode = Mode.Chat) {
+    private fun HomeAtRest() {
         HomeContent(
-            greeting = "Good evening, Ada.",
             state = AiState.Idle,
-            level = 0f,
-            error = null,
-            note = null,
+            greeting = "Good evening, Ada.",
             lastTurn = listOf(
                 ChatMsg("What's on my screen?", fromUser = true, at = T0),
                 ChatMsg(
@@ -168,12 +150,7 @@ class ScreensRenderTest {
                     at = T0 + 20_000,
                 ),
             ),
-            mode = mode,
-            onMode = {},
-            onMic = {},
-            onType = {},
-            onQuickAction = { },
-            onDismissError = {},
+            modelReady = true,
         )
     }
 
