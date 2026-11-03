@@ -59,24 +59,8 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
 
     // Both on-device engines are built and kept, so switching between them is a reload and
     // nothing more. Only the chosen one is ever loaded into memory.
-    private val perf = com.sadu.assistant.perf.PerformanceManager(ctx)
     private val mediaPipeEngine = LlmEngine(ctx)
-    private val llamaEngine = LlamaEngine(ctx) { perf.threads(perfMode, perf.read()) }
-
-    /** Performance, Balanced or Battery saver - the one switch that changes inference settings. */
-    var perfMode by mutableStateOf(com.sadu.assistant.perf.PerfMode.from(prefs.perfMode))
-        private set
-
-    /** Keep writing the answer when the user leaves the app or turns the screen off. */
-    var backgroundOn by mutableStateOf(prefs.backgroundGeneration)
-        private set
-
-    /** New-token ceiling for the turn in flight, lowered when the phone is hot or short of RAM. */
-    private var turnCap = Int.MAX_VALUE
-
-    /** Whether the performance panel is showing. */
-    var perfOpen by mutableStateOf(false)
-        private set
+    private val llamaEngine = LlamaEngine(ctx)
 
     /** The engine the settings point at; the whole model section works through this. */
     private val engine: Engine
@@ -114,7 +98,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             if (mode == Mode.Chat) Sampling.chat(prefs.chatTemperature) else Sampling.Command
         },
         length = { prefs.replyLength },
-        cap = { turnCap },
     )
     private val assistant = Assistant(
         brain,
@@ -434,29 +417,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         refreshRuntime()
         // loadModel() also words the "which file do you need" note, for whichever engine is set.
         loadModel()
-        watchMemory()
-    }
-
-    /**
-     * Android tells the app when the phone is short of memory, and for an app holding a
-     * multi-gigabyte model ignoring that is how you get killed. The model is closed when
-     * nothing is being written; the next question loads it again.
-     */
-    private fun watchMemory() {
-        val app = ctx.applicationContext as? android.app.Application ?: return
-        app.registerComponentCallbacks(object : android.content.ComponentCallbacks2 {
-            override fun onTrimMemory(level: Int) {
-                if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
-                    releaseModelIfIdle("the phone is short of memory")
-                }
-            }
-
-            override fun onLowMemory() {
-                releaseModelIfIdle("the phone is short of memory")
-            }
-
-            override fun onConfigurationChanged(newConfig: android.content.res.Configuration) = Unit
-        })
     }
 
     // ------------------------------------------------------------------ sections
@@ -607,27 +567,12 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         stoppedByUser = false
         canStop = true
 
-        val device = perf.read()
-        llamaEngine.setThreads(perf.threads(perfMode, device))
-        turnCap = perf.tokenBudget(perfMode, device, prefs.replyLength.tokens)
-        com.sadu.assistant.perf.PerfMonitor.beginTurn(
-            mode = perfMode,
-            threads = llamaEngine.threads,
-            device = device,
-            modelMb = llamaEngine.modelBytes(),
-            context = if (engine === llamaEngine) llamaEngine.contextTokens else contextTokens,
-        )
-        if (backgroundOn) com.sadu.assistant.perf.GenerationService.start(ctx, "Writing a reply…")
-        val notifiedAt = longArrayOf(0L)
-
         val buffer = StreamBuffer()
         val state = StreamState()
         val turn = TurnClock()
         streamThinking = null
         thinkingLive = false
         viewModelScope.launch {
-          var delivered = false
-          try {
             val ticker = launch { paceStream(buffer, state, turn) }
             // The assistant says what it is doing on a worker thread; this puts it on screen.
             val busy = launch {
@@ -636,54 +581,25 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
                     delay(140)
                 }
             }
-            var failure: Throwable? = null
             val reply = withContext(Dispatchers.IO) {
                 try {
                     assistant.respond(text) { delta ->
                         turn.firstToken()
                         buffer.append(delta)
-                        // The shade is updated once a second at most: the notification is a
-                        // status line, not a second copy of the answer.
-                        val now = System.currentTimeMillis()
-                        if (backgroundOn && now - notifiedAt[0] > 1000) {
-                            notifiedAt[0] = now
-                            com.sadu.assistant.perf.GenerationService.update(
-                                ctx,
-                                "${buffer.length} characters written" ,
-                            )
-                        }
                     }
                 } catch (e: Throwable) {
-                    failure = e
-                    buffer.snapshot()
+                    "Sorry, something went wrong: ${e.message}"
                 }
             }
             state.markFinished()
-            com.sadu.assistant.perf.GenerationService.stop(ctx)
             busy.cancel()
             busyNote = null
             canStop = false
-            // A turn that died halfway keeps what it wrote; only an empty one becomes an apology.
-            if (failure != null && buffer.length == 0) {
-                buffer.append("Sorry, something went wrong: ${failure?.message}")
-            } else if (failure != null) {
-                errorText = "The reply stopped early: ${failure?.message}"
-            }
             // A rule answer, a tool result, or the whole on-device reply: reveal it smoothly.
             if (buffer.length == 0) buffer.append(reply)
             ticker.join()
             turn.finish()
-            val perfLine = PerfLine.parse((engine as? com.sadu.assistant.brain.LlamaEngine)?.lastPerf())
-            val after = perf.read()
-            com.sadu.assistant.perf.PerfMonitor.endTurn(
-                promptTokS = perfLine?.promptTokS ?: 0.0,
-                genTokS = perfLine?.genTokS ?: 0.0,
-                genTokens = perfLine?.genTokens ?: 0,
-                promptMs = perfLine?.promptMs ?: 0L,
-                genMs = perfLine?.genMs ?: 0L,
-                turnMs = turn.totalMs(),
-                device = after,
-            )
+            val perf = PerfLine.parse((engine as? com.sadu.assistant.brain.LlamaEngine)?.lastPerf())
             val thought = Think.thinking(buffer.snapshot()).ifEmpty {
                 Think.thinking(reply)
             }.ifEmpty { streamThinking.orEmpty() }
@@ -694,9 +610,9 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
                     thinking = thought.takeIf { it.isNotBlank() },
                     stats = TurnStats(
                         thinkingMs = turn.thinkingMs(),
-                        promptMs = perfLine?.promptMs,
+                        promptMs = perf?.promptMs,
                         ttftMs = turn.ttftMs(),
-                        genTokS = perfLine?.genTokS,
+                        genTokS = perf?.genTokS,
                     ),
                 ),
             )
@@ -711,10 +627,10 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
                     ?.let { android.util.Log.d("SaduTiming", it) }
             }
             val local = engine as? com.sadu.assistant.brain.LlamaEngine
-            if (perfLine != null) {
+            if (perf != null) {
                 android.util.Log.d(
                     "SaduPerf",
-                    perfLine.line(router.lastUsed, prefs.mode, assistant.lastSteps().size, assistant.lastToolMs()) +
+                    perf.line(router.lastUsed, prefs.mode, assistant.lastSteps().size, assistant.lastToolMs()) +
                         ramPeak(),
                 )
             } else if (assistant.answeredWithModel) {
@@ -757,24 +673,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
                 ReplyKind.Notice -> aiState = AiState.Idle
                 ReplyKind.Answer -> speak(reply)
             }
-            delivered = true
-          } finally {
-            // Interrupted mid-answer (the activity finished, the user hit Stop, the process is
-            // going away): keep what was written instead of dropping a half-finished thought.
-            com.sadu.assistant.perf.GenerationService.stop(ctx)
-            if (!delivered) {
-                withContext(kotlinx.coroutines.NonCancellable) {
-                    val partial = Think.answer(buffer.snapshot()).ifBlank { buffer.snapshot() }.trim()
-                    if (partial.isNotEmpty()) {
-                        push(ChatMsg(text = partial, fromUser = false))
-                        errorText = "The answer was cut short. The part above was kept."
-                        persist()
-                    }
-                    aiState = AiState.Idle
-                    canStop = false
-                }
-            }
-          }
         }
     }
 
@@ -986,19 +884,11 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             modelNote = if (prefs.localEngine == LocalEngine.Llama) NEEDS_GGUF_NOTE else NEEDS_MODEL_NOTE
             return
         }
-        val device = perf.read()
-        val wanted = perf.contextTokens(perfMode, device, contextTokens)
-        if (engine === llamaEngine && !perf.canLoad(llamaEngine.modelBytes(), device)) {
-            modelReady = false
-            modelNote = "Not enough free memory right now (${device.availableMb}MB free). " +
-                "Close a few apps and load the model again."
-            return
-        }
         modelNote = "Loading the AI model..."
         viewModelScope.launch {
             val problem = withContext(Dispatchers.IO) {
                 try {
-                    engine.load(wanted)
+                    engine.load(contextTokens)
                     null
                 } catch (e: Throwable) {
                     e.message ?: e.toString()
@@ -1014,45 +904,6 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             }
             refreshRuntime()
         }
-    }
-
-    // ------------------------------------------------------------------ performance
-
-    /** Performance, Balanced or Battery saver. Takes effect on the next turn, not mid-word. */
-    fun openPerformance() {
-        perfOpen = true
-    }
-
-    fun closePerformance() {
-        perfOpen = false
-    }
-
-    fun choosePerfMode(mode: com.sadu.assistant.perf.PerfMode) {
-        perfMode = mode
-        prefs.perfMode = mode.tag
-        com.sadu.assistant.perf.PerfMonitor.setMode(mode)
-        val device = perf.read()
-        llamaEngine.setThreads(perf.threads(perfMode, device))
-    }
-
-    /** Whether a reply may keep being written while the app is in the background. */
-    fun setBackgroundGeneration(on: Boolean) {
-        backgroundOn = on
-        prefs.backgroundGeneration = on
-        if (!on) com.sadu.assistant.perf.GenerationService.stop(ctx)
-    }
-
-    /**
-     * Call when Android says memory is short. The model is the largest thing here and it can be
-     * loaded again in a few seconds, so it is the first thing to go - and only when no answer is
-     * being written, because losing the model mid-reply is worse than the memory it frees.
-     */
-    fun releaseModelIfIdle(reason: String) {
-        if (aiState == AiState.Processing || llamaEngine.isWriting) return
-        if (!modelReady) return
-        runCatching { llamaEngine.close() }
-        modelReady = false
-        modelNote = "The model was unloaded to free memory ($reason). It loads again when needed."
     }
 
     /** Copies the `.task` bundle the MediaPipe engine runs. */

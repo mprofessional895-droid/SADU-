@@ -25,8 +25,6 @@ class OfflineBrain(
         if (mode == Mode.Chat) Sampling.chat() else Sampling.Command
     },
     private val length: () -> ReplyLength = { ReplyLength.Default },
-    /** A ceiling for this turn, from the performance manager; never longer than the setting. */
-    private val cap: () -> Int = { Int.MAX_VALUE },
 ) : Brain {
 
     override val isReady: Boolean
@@ -35,13 +33,10 @@ class OfflineBrain(
     override val name: String get() = engine.name
 
     override fun generate(request: LlmRequest): String =
-        engine.generate(promptFor(request), sampling(request.mode), budget())
+        engine.generate(promptFor(request), sampling(request.mode), length().tokens)
 
     override fun generateStream(request: LlmRequest, onDelta: (String) -> Unit): String =
-        engine.generateStream(promptFor(request), sampling(request.mode), budget(), onDelta)
-
-    /** The reply length from Settings, shortened when the phone is hot or short of memory. */
-    private fun budget(): Int = minOf(length().tokens, cap()).coerceAtLeast(64)
+        engine.generateStream(promptFor(request), sampling(request.mode), length().tokens, onDelta)
 
     /** Stops the answer being written. True when there was one to stop. */
     fun cancel(): Boolean = engine.cancel()
