@@ -53,7 +53,7 @@ import com.sadu.assistant.ui.Ink
 import com.sadu.assistant.ui.home.NeuralSphere
 
 private val Cyan = Color(0xFF2EE6D6)
-private const val VERSION = "v0.36"
+private const val VERSION = "v0.35"
 
 /**
  * One quiet instrument panel: who Sadu is, what it is doing right now, and a single door
@@ -71,8 +71,6 @@ fun HomeScreen(vm: SaduViewModel) {
         error = vm.errorText,
         onOpenChat = { vm.goToChat() },
         onSettings = { vm.selectTab(Tab.Settings) },
-        onPerformance = { vm.openPerformance() },
-        modeLabel = vm.perfMode.label,
     )
 }
 
@@ -87,8 +85,6 @@ fun HomeContent(
     error: String? = null,
     onOpenChat: () -> Unit = {},
     onSettings: () -> Unit = {},
-    onPerformance: () -> Unit = {},
-    modeLabel: String = "Balanced",
 ) {
     val engine = when {
         modelReady -> "On Device"
@@ -132,7 +128,6 @@ fun HomeContent(
             NeuralCorePanel(
                 engine = engine,
                 state = state,
-                mode = modeLabel,
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(top = 44.dp),
@@ -181,7 +176,7 @@ fun HomeContent(
                 label = engine,
                 live = engine == "On Device",
                 modifier = Modifier.weight(1f),
-                onClick = onPerformance,
+                onClick = onSettings,
             )
         }
         Spacer(Modifier.height(16.dp))
@@ -317,12 +312,7 @@ private fun OnlinePill(online: Boolean) {
 }
 
 @Composable
-private fun NeuralCorePanel(
-    engine: String,
-    state: AiState,
-    mode: String,
-    modifier: Modifier = Modifier,
-) {
+private fun NeuralCorePanel(engine: String, state: AiState, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier
             .width(104.dp)
@@ -340,8 +330,6 @@ private fun NeuralCorePanel(
         BulletRow(engine)
         Spacer(Modifier.height(3.dp))
         BulletRow(if (state == AiState.Idle) "Ready" else "Active")
-        Spacer(Modifier.height(3.dp))
-        BulletRow(mode)
         Spacer(Modifier.height(3.dp))
         BulletRow(VERSION)
     }

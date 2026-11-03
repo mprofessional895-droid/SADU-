@@ -20,18 +20,9 @@ import java.io.File
  * [isAvailable] is false on any build that did not ship the native library (no NDK at build time),
  * and then Settings says so and MediaPipe keeps the job.
  */
-class LlamaEngine(
-    private val ctx: Context,
-    /** How many threads the next load should ask for; read once per load, never mid-turn. */
-    private val threadCount: () -> Int = { CpuTopology.threads() },
-) : Engine {
+class LlamaEngine(private val ctx: Context) : Engine {
 
     private var handle: Long = 0L
-
-    /** Threads the live context is actually running, so the dashboard shows reality. */
-    @Volatile
-    var threads: Int = 0
-        private set
     private var loadedTokens = 0
 
     /** What the loaded file says it is, for the status line in Settings. */
@@ -64,23 +55,13 @@ class LlamaEngine(
         close()
         if (!isModelPresent()) throw IllegalStateException("No .gguf model has been imported yet.")
 
-        val wanted = threadCount()
-        val opened = try {
-            nativeLoad(modelFile.absolutePath, tokens, wanted, Batch)
-        } catch (e: OutOfMemoryError) {
-            close()
-            throw IllegalStateException(
-                "There was not enough free memory to load this model. Close other apps, " +
-                    "or try a smaller file or a smaller context window.",
-            )
-        }
+        val opened = nativeLoad(modelFile.absolutePath, tokens, threads(), Batch)
         if (opened == 0L) {
             throw IllegalStateException(
                 nativeLastError().ifEmpty { "llama.cpp could not load that model file." },
             )
         }
         handle = opened
-        threads = wanted
         loadedTokens = tokens
         info = (Gguf.inspect(modelFile) as? Gguf.Check.Ok)?.info
         return loadedTokens
@@ -170,24 +151,11 @@ class LlamaEngine(
         return true
     }
 
-    /**
-     * Changes the thread count between turns. llama.cpp rebuilds its thread pool on the call, so
-     * asking while a reply is being written is refused rather than allowed to race.
-     */
-    fun setThreads(count: Int) {
-        val current = handle
-        val wanted = count.coerceIn(1, CpuTopology.MaxThreads)
-        if (current == 0L || writing || wanted == threads) return
-        runCatching { nativeSetThreads(current, wanted) }
-        threads = wanted
-    }
-
     @Synchronized
     override fun close() {
         val current = handle
         handle = 0L
         loadedTokens = 0
-        threads = 0
         if (current != 0L) runCatching { nativeFree(current) }
     }
 
@@ -283,6 +251,9 @@ class LlamaEngine(
         if (!isAvailable) throw IllegalStateException(Unavailable)
     }
 
+    /** How many threads the model runs on: the big cores, not every core the phone reports. */
+    private fun threads(): Int = CpuTopology.threads()
+
     /** llama.cpp's own numbers for the last reply: prompt speed and generation speed apart. */
     fun lastPerf(): String = runCatching { nativeLastPerf(handle) }.getOrDefault("")
 
@@ -296,8 +267,6 @@ class LlamaEngine(
     private external fun nativeFree(handle: Long)
 
     private external fun nativeCancel(handle: Long)
-
-    private external fun nativeSetThreads(handle: Long, threads: Int)
 
     private external fun nativeLastError(): String
 

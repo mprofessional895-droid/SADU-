@@ -19,7 +19,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <queries>
         <intent>
@@ -84,12 +83,6 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
-
-        <!-- Keeps a reply being written while the app is in the background -->
-        <service
-            android:name=".perf.GenerationService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
 
         <!-- Optional "Hey Sadu" background listening (experimental) -->
         <service
