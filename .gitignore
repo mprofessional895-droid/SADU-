@@ -11,3 +11,6 @@ keystore/
 keystore.properties
 *.jks
 *.keystore
+
+# Native libraries are built by CMake (NDK) in CI; never commit prebuilt ones.
+app/src/main/jniLibs/
