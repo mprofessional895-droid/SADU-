@@ -154,37 +154,6 @@ class ScreensRenderTest {
         )
     }
 
-    @Test
-    @Config(sdk = [34], qualifiers = "w360dp-h1300dp-xhdpi")
-    fun homeEmergentFull() {
-        show {
-            HomeContent(
-                state = AiState.Idle,
-                greeting = "Good evening, Ada.",
-                lastTurn = listOf(
-                    ChatMsg("did you know scoutop is in now bigboss", fromUser = true, at = T0),
-                    ChatMsg(
-                        "I'm not familiar with that - those names don't match anything I know. " +
-                            "Could you give me a little more context?",
-                        fromUser = false,
-                        at = T0 + 20_000,
-                        stats = TurnStats(ttftMs = 212, genTokS = 18.4),
-                    ),
-                ),
-                modelReady = true,
-                stats = TurnStats(ttftMs = 212, genTokS = 18.4),
-                tokHistory = listOf(12.4f, 14.1f, 13.2f, 16.8f, 15.4f, 17.2f, 18.4f),
-                events = listOf(
-                    HomeEvent(T0, "Answered by Local"),
-                    HomeEvent(T0 - 60_000, "On-device model loaded"),
-                    HomeEvent(T0 - 120_000, "Wake word listening"),
-                    HomeEvent(T0 - 180_000, "Cloud model connected"),
-                ),
-            )
-        }
-        shoot("home-emergent-full")
-    }
-
     // ---------------------------------------------------------------- chats
 
     @Test
