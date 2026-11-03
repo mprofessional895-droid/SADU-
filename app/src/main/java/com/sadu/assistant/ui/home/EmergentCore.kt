@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.withTransform
 import com.sadu.assistant.ui.rememberReducedMotion
 import kotlin.math.PI
 import kotlin.math.cos
@@ -64,6 +65,19 @@ fun EmergentCore(
         val centre = Offset(w / 2f, h * 0.5f)
         val sphereR = w * 0.19f * 1.04f
 
+        // A wash of the accent across the whole hero, the way the design's screen glow sits
+        // behind everything rather than only around the sphere.
+        drawRect(
+            brush = Brush.radialGradient(
+                listOf(
+                    accent.copy(alpha = 0.10f * glow),
+                    accent.copy(alpha = 0.045f * glow),
+                    Color.Transparent,
+                ),
+                center = centre,
+                radius = w * 0.95f,
+            )
+        )
         aurora(w, h, centre, accent, t)
         nebula(w, h, centre, accent, t)
         stars(stars, w, h, t)
@@ -72,7 +86,7 @@ fun EmergentCore(
         plinth(w, h, accent, t, glow)
         hudRings(centre, w, accent, t)
         orbits(centre, w, accent, t, glow)
-        wireSphere(centre, sphereR, accent, t, glow)
+        wireSphere(centre, sphereR, accent, t, glow, w)
         dust(motes, w, h, t)
         embers(embers, w, h, accent, t, glow)
     }
@@ -159,14 +173,29 @@ private fun DrawScope.stars(stars: List<Star>, w: Float, h: Float, t: Float) {
 }
 
 private fun DrawScope.halo(centre: Offset, w: Float, accent: Color, glow: Float, t: Float) {
-    val breathe = 0.2f * glow + 0.03f * sin(t * 0.9f)
+    val breathe = 0.30f * glow + 0.04f * sin(t * 0.9f)
     drawCircle(
         brush = Brush.radialGradient(
-            listOf(accent.copy(alpha = breathe), accent.copy(alpha = breathe * 0.25f), Color.Transparent),
+            listOf(
+                accent.copy(alpha = breathe),
+                accent.copy(alpha = breathe * 0.55f),
+                accent.copy(alpha = breathe * 0.18f),
+                Color.Transparent,
+            ),
             center = centre,
-            radius = w * 0.46f,
+            radius = w * 0.62f,
         ),
-        radius = w * 0.46f,
+        radius = w * 0.62f,
+        center = centre,
+    )
+    // A second, wider and fainter echo, as the design has.
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(accent.copy(alpha = breathe * 0.35f), Color.Transparent),
+            center = centre,
+            radius = w * 0.95f,
+        ),
+        radius = w * 0.95f,
         center = centre,
     )
 }
@@ -200,17 +229,21 @@ private fun DrawScope.rays(centre: Offset, w: Float, accent: Color, t: Float, gl
 /** The lit floor: ripples, the bright plinth line and a reflection of the core. */
 private fun DrawScope.plinth(w: Float, h: Float, accent: Color, t: Float, glow: Float) {
     val fy = h * 0.86f
-    drawCircle(
-        brush = Brush.radialGradient(
-            listOf(accent.copy(alpha = 0.30f * glow), accent.copy(alpha = 0.10f * glow), Color.Transparent),
-            center = Offset(w / 2f, fy),
+    withTransform({ scale(1f, 0.32f, Offset(w / 2f, fy)) }) {
+        drawCircle(
+            brush = Brush.radialGradient(
+                listOf(
+                    accent.copy(alpha = 0.42f * glow),
+                    accent.copy(alpha = 0.14f * glow),
+                    Color.Transparent,
+                ),
+                center = Offset(w / 2f, fy),
+                radius = w * 0.46f,
+            ),
             radius = w * 0.46f,
-        ),
-        radius = w * 0.46f,
-        center = Offset(w / 2f, fy),
-        // squash the glow into an ellipse for a floor-plane look
-        style = Stroke(width = w * 0.92f, cap = StrokeCap.Butt),
-    )
+            center = Offset(w / 2f, fy),
+        )
+    }
     for (i in 0 until 6) {
         val phase = (t * 0.22f / 6f + i / 6f) % 1f
         val rx = w * (0.08f + 0.38f * phase)
@@ -319,6 +352,7 @@ private fun DrawScope.wireSphere(
     accent: Color,
     t: Float,
     glow: Float,
+    w: Float,
 ) {
     drawCircle(
         brush = Brush.radialGradient(
@@ -390,6 +424,61 @@ private fun DrawScope.wireSphere(
         center = centre,
         style = Stroke(1.1f),
     )
+
+    // The core itself, measured the way the design lights it: a small hot centre inside two
+    // wide blooms, with a long four-point flare.
+    val cr = w * 0.072f * (1f + 0.035f * sin(t * 2.4f)) * glow.coerceAtMost(1.2f)
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(accent.copy(alpha = 0.32f * glow), accent.copy(alpha = 0.12f * glow), Color.Transparent),
+            center = centre,
+            radius = cr * 5.5f,
+        ),
+        radius = cr * 5.5f,
+        center = centre,
+    )
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(accent.copy(alpha = 0.30f * glow), Color.Transparent),
+            center = centre,
+            radius = cr * 9f,
+        ),
+        radius = cr * 9f,
+        center = centre,
+    )
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(Color.White.copy(alpha = 0.55f), Ice.copy(alpha = 0.25f), Color.Transparent),
+            center = centre,
+            radius = cr * 3.8f,
+        ),
+        radius = cr * 3.8f,
+        center = centre,
+    )
+    drawCircle(
+        brush = Brush.radialGradient(
+            listOf(Color.White, Ice.copy(alpha = 0.85f), accent.copy(alpha = 0.35f)),
+            center = centre,
+            radius = cr,
+        ),
+        radius = cr,
+        center = centre,
+    )
+    // Flare: long across, shorter up and down, exactly as the design draws it.
+    listOf(5.4f to 0f, 3.1f to 90f).forEach { (length, angle) ->
+        rotate(degrees = angle, pivot = centre) {
+            val fl = cr * length
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    listOf(Color.Transparent, Color.White.copy(alpha = 0.5f), Color.Transparent),
+                    startX = centre.x - fl,
+                    endX = centre.x + fl,
+                ),
+                topLeft = Offset(centre.x - fl, centre.y - 0.8f),
+                size = Size(fl * 2f, 1.6f),
+            )
+        }
+    }
 }
 
 private fun DrawScope.dust(motes: List<Mote>, w: Float, h: Float, t: Float) {

@@ -225,20 +225,20 @@ private fun AmbientLight(accent: Color) {
                 drawRect(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF1F6E78).copy(alpha = 0.16f * breathe),
-                            Color(0xFF1F6E78).copy(alpha = 0.05f * breathe),
+                            Color(0xFF1F6E78).copy(alpha = 0.30f * breathe),
+                            Color(0xFF1F6E78).copy(alpha = 0.10f * breathe),
                             Color.Transparent,
                         ),
                         center = Offset(size.width / 2f, size.height * 0.34f),
-                        radius = size.width * 1.1f,
+                        radius = size.width * 1.35f,
                     )
                 )
                 drawRect(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            accent.copy(alpha = 0.18f),
-                            accent.copy(alpha = 0.07f),
-                            accent.copy(alpha = 0.02f),
+                            accent.copy(alpha = 0.22f),
+                            accent.copy(alpha = 0.10f),
+                            accent.copy(alpha = 0.03f),
                             Color.Transparent,
                         ),
                         center = Offset(size.width / 2f, size.height * 1.02f),
