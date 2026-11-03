@@ -1,15 +1,20 @@
 package com.sadu.assistant.ui.screens
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,12 +51,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -137,13 +144,15 @@ fun HomeContent(
         else -> greeting.ifBlank { "Ready when you are." }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Ink.Background)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = Dimens.gutter),
-    ) {
+    Box(Modifier.fillMaxSize().background(Ink.Background)) {
+        ScreenGlow(accent)
+        BottomGlow(accent)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Dimens.gutter),
+        ) {
         Header(online = engine != "No model", onSettings = onSettings)
         Spacer(Modifier.height(22.dp))
         HeroHeading()
@@ -153,7 +162,7 @@ fun HomeContent(
             modifier = Modifier.fillMaxWidth().height(340.dp),
             contentAlignment = Alignment.Center,
         ) {
-            NeuralSphere(state = state, modifier = Modifier.fillMaxSize())
+            NeuralSphere(state = state, modifier = Modifier.fillMaxSize(), accent = accent)
 
             Row(
                 modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
@@ -190,7 +199,7 @@ fun HomeContent(
                     ),
                 )
                 Spacer(Modifier.height(9.dp))
-                SegmentedBar(loaded = modelReady, cloud = cloudReady)
+                SegmentedBar(loaded = modelReady, cloud = cloudReady, accent = accent)
             }
 
             NeuralCoreCard(
@@ -259,6 +268,7 @@ fun HomeContent(
 
         ActivityCard(events = events, engine = engine, modelReady = modelReady)
         Spacer(Modifier.height(18.dp))
+        }
     }
 }
 
@@ -361,8 +371,85 @@ private fun TypedStatus(text: String) {
     }
 }
 
+/** The light the sphere throws across the whole screen, as in the design. */
+@Composable
+private fun ScreenGlow(accent: Color) {
+    val reduced = rememberReducedMotion()
+    val breathe by if (!reduced) {
+        rememberInfiniteTransition(label = "screenGlow").animateFloat(
+            initialValue = 0.55f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(7000), RepeatMode.Reverse),
+            label = "glowAlpha",
+        )
+    } else {
+        remember { mutableFloatStateOf(0.8f) }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .drawBehind {
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            accent.copy(alpha = 0.13f * breathe),
+                            accent.copy(alpha = 0.05f * breathe),
+                            Color.Transparent,
+                        ),
+                        center = Offset(size.width / 2f, size.height * 0.34f),
+                        radius = size.width * 0.95f,
+                    )
+                )
+            }
+    )
+}
+
+/** The underglow that sits under the bottom of the page. */
+@Composable
+private fun BottomGlow(accent: Color) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .drawBehind {
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            accent.copy(alpha = 0.16f),
+                            accent.copy(alpha = 0.06f),
+                            accent.copy(alpha = 0.02f),
+                            Color.Transparent,
+                        ),
+                        center = Offset(size.width / 2f, size.height * 1.05f),
+                        radius = size.width * 0.95f,
+                    )
+                )
+            }
+    )
+}
+
 @Composable
 private fun HeroHeading() {
+    val reduced = rememberReducedMotion()
+    val shine by if (!reduced) {
+        rememberInfiniteTransition(label = "rule").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(5000, easing = LinearEasing)),
+            label = "shine",
+        )
+    } else {
+        remember { mutableFloatStateOf(0.5f) }
+    }
+    val cycle by if (!reduced) {
+        rememberInfiniteTransition(label = "words").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing)),
+            label = "wordCycle",
+        )
+    } else {
+        remember { mutableFloatStateOf(1f) }
+    }
     Column(Modifier.fillMaxWidth()) {
         Text(
             text = "The Emergent Mind",
@@ -373,22 +460,47 @@ private fun HeroHeading() {
             ),
         )
         Spacer(Modifier.height(10.dp))
-        Box(
-            Modifier
-                .width(112.dp)
-                .height(2.dp)
-                .background(Brush.horizontalGradient(listOf(Color(0xFF6F787C), Color.Transparent)))
-        )
+        Canvas(Modifier.width(112.dp).height(2.dp)) {
+            drawRect(Color(0xFF232A2D))
+            val w = size.width
+            val start = shine * (w + 70f) - 70f
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(Color.Transparent, Color(0xFF6F787C), Color.Transparent),
+                    startX = start,
+                    endX = start + 70f,
+                ),
+                topLeft = Offset(0f, 0f),
+                size = Size(w, size.height),
+            )
+        }
         Spacer(Modifier.height(12.dp))
-        Text(
-            text = "THINK  ·  ASSIST  ·  EVOLVE",
-            color = Ink.TextDim.copy(alpha = 0.85f),
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontFamily = Mono,
-                letterSpacing = 3.2.sp,
-                fontSize = 10.sp,
-            ),
-        )
+        Row {
+            listOf("THINK", "ASSIST", "EVOLVE").forEachIndexed { i, word ->
+                if (i > 0) {
+                    Text(
+                        text = "  ·  ",
+                        color = Ink.TextDim.copy(alpha = 0.5f),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontFamily = Mono,
+                            letterSpacing = 3.2.sp,
+                            fontSize = 10.sp,
+                        ),
+                    )
+                }
+                val phase = (cycle + i / 3f) % 1f
+                val lit = (1f - kotlin.math.abs(phase * 2f - 1f)).coerceIn(0f, 1f)
+                Text(
+                    text = word,
+                    color = Ink.TextDim.copy(alpha = 0.5f + 0.45f * lit),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = Mono,
+                        letterSpacing = 3.2.sp,
+                        fontSize = 10.sp,
+                    ),
+                )
+            }
+        }
     }
 }
 
@@ -520,12 +632,23 @@ private fun NeuralCoreCard(
 
 @Composable
 private fun BulletRow(text: String, live: Boolean, accent: Color) {
+    val reduced = rememberReducedMotion()
+    val glow by if (!reduced && live) {
+        rememberInfiniteTransition(label = "bullet").animateFloat(
+            initialValue = 0.4f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(1600), RepeatMode.Reverse),
+            label = "bulletDot",
+        )
+    } else {
+        remember { mutableFloatStateOf(1f) }
+    }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
                 .size(4.dp)
                 .clip(CircleShape)
-                .background(if (live) accent else Ink.TextDim.copy(alpha = 0.7f))
+                .background(if (live) accent.copy(alpha = glow) else Ink.TextDim.copy(alpha = 0.7f))
         )
         Spacer(Modifier.width(6.dp))
         Text(
@@ -543,7 +666,19 @@ private fun BulletRow(text: String, live: Boolean, accent: Color) {
 }
 
 @Composable
-private fun SegmentedBar(loaded: Boolean, cloud: Boolean) {
+private fun SegmentedBar(loaded: Boolean, cloud: Boolean, accent: Color) {
+    val reduced = rememberReducedMotion()
+    val pulse by if (!reduced) {
+        rememberInfiniteTransition(label = "segs").animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+            label = "segPulse",
+        )
+    } else {
+        remember { mutableFloatStateOf(1f) }
+    }
+    val loading = cloud && !loaded
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         repeat(7) { i ->
             val lit = when {
@@ -551,12 +686,17 @@ private fun SegmentedBar(loaded: Boolean, cloud: Boolean) {
                 cloud -> i < 4
                 else -> false
             }
+            val alpha = when {
+                lit && loading -> pulse
+                lit -> 0.85f
+                else -> 1f
+            }
             Box(
                 Modifier
                     .width(9.dp)
                     .height(3.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(if (lit) Teal.copy(alpha = 0.85f) else Ink.Border)
+                    .background(if (lit) accent.copy(alpha = alpha) else Ink.Border)
             )
         }
     }
@@ -594,10 +734,21 @@ private fun SectionLabel(text: String) {
  */
 @Composable
 private fun PromptCard(turn: List<ChatMsg>, fallback: String, onOpen: () -> Unit) {
+    val press = remember { MutableInteractionSource() }
+    val pressed by press.collectIsPressedAsState()
+    val glow by animateFloatAsState(if (pressed) 1f else 0f, label = "cardGlow")
+    val ring by animateColorAsState(lerp(Ink.Border, Teal, glow), label = "cardRing")
     val question = turn.firstOrNull { it.fromUser }?.text
     val answer = turn.lastOrNull { !it.fromUser }?.text
     val headline = answer?.lineSequence()?.firstOrNull { it.isNotBlank() }
     val rest = headline?.let { answer.removePrefix(it).trim() }
+    val flash = remember { Animatable(0f) }
+    LaunchedEffect(answer) {
+        if (answer != null) {
+            flash.snapTo(0.85f)
+            flash.animateTo(0f, tween(1200))
+        }
+    }
 
     Row(
         modifier = Modifier
@@ -608,8 +759,13 @@ private fun PromptCard(turn: List<ChatMsg>, fallback: String, onOpen: () -> Unit
                     listOf(Ink.Card.copy(alpha = 0.95f), Ink.Card.copy(alpha = 0.6f))
                 )
             )
-            .border(1.dp, Ink.Border, RoundedCornerShape(22.dp))
-            .clickable(onClickLabel = "Open chat", onClick = onOpen)
+            .border(1.dp, lerp(ring, Teal, flash.value), RoundedCornerShape(22.dp))
+            .clickable(
+                interactionSource = press,
+                indication = null,
+                onClickLabel = "Open chat",
+                onClick = onOpen,
+            )
             .padding(start = 18.dp, top = 17.dp, bottom = 17.dp, end = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -654,7 +810,22 @@ private fun PromptCard(turn: List<ChatMsg>, fallback: String, onOpen: () -> Unit
                 .size(44.dp)
                 .clip(CircleShape)
                 .background(Ink.Elevated)
-                .border(1.dp, Ink.Border, CircleShape),
+                .border(1.dp, lerp(Ink.Border, Teal, glow), CircleShape)
+                .drawBehind {
+                    if (glow > 0.01f) {
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    Teal.copy(alpha = 0.30f * glow),
+                                    Color.Transparent,
+                                ),
+                                center = center,
+                                radius = size.minDimension,
+                            ),
+                            radius = size.minDimension,
+                        )
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -676,6 +847,17 @@ private fun Pill(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val reduced = rememberReducedMotion()
+    val glow by if (!reduced && live) {
+        rememberInfiniteTransition(label = "pill").animateFloat(
+            initialValue = 0.45f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(1600), RepeatMode.Reverse),
+            label = "pillDot",
+        )
+    } else {
+        remember { mutableFloatStateOf(1f) }
+    }
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
@@ -697,7 +879,7 @@ private fun Pill(
             Modifier
                 .size(4.dp)
                 .clip(CircleShape)
-                .background(if (live) accent else Ink.TextDim.copy(alpha = 0.55f))
+                .background(if (live) accent.copy(alpha = glow) else Ink.TextDim.copy(alpha = 0.55f))
         )
         Spacer(Modifier.width(5.dp))
         Text(
@@ -725,12 +907,19 @@ private fun SuggestionChips(onPick: (String) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         for (text in SUGGESTIONS) {
+            val chipPress = remember { MutableInteractionSource() }
+            val down by chipPress.collectIsPressedAsState()
+            val lift by animateFloatAsState(if (down) 1f else 0f, label = "chipGlow")
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .background(Ink.Card)
-                    .border(1.dp, Ink.Border, RoundedCornerShape(50))
-                    .clickable(onClickLabel = text) { onPick(text) }
+                    .border(1.dp, lerp(Ink.Border, Teal, lift), RoundedCornerShape(50))
+                    .clickable(
+                        interactionSource = chipPress,
+                        indication = null,
+                        onClickLabel = text,
+                    ) { onPick(text) }
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
