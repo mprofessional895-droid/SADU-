@@ -43,6 +43,7 @@ private val NeuralDeep = Color(0xFF39D8F0)
 fun NeuralSphere(
     state: AiState,
     modifier: Modifier = Modifier,
+    accent: Color = NeuralDeep,
 ) {
     val reduced = rememberReducedMotion()
     val turn by if (!reduced) {
@@ -75,7 +76,7 @@ fun NeuralSphere(
         val centre = Offset(cx, cy)
 
         beams(cx, cy, r, pulse)
-        halo(centre, r, pulse, state)
+        halo(centre, r, pulse, state, accent)
         glass(centre, r)
         orbitRings(centre, r, turn)
         brain(centre, r, nodes, turn, pulse)
@@ -83,7 +84,13 @@ fun NeuralSphere(
     }
 }
 
-private fun DrawScope.halo(centre: Offset, r: Float, pulse: Float, state: AiState) {
+private fun DrawScope.halo(
+    centre: Offset,
+    r: Float,
+    pulse: Float,
+    state: AiState,
+    accent: Color = NeuralDeep,
+) {
     val strength = when (state) {
         AiState.Listening, AiState.Processing, AiState.Speaking -> 0.34f
         AiState.Error -> 0.10f
@@ -92,8 +99,8 @@ private fun DrawScope.halo(centre: Offset, r: Float, pulse: Float, state: AiStat
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(
-                NeuralDeep.copy(alpha = strength * pulse),
-                NeuralDeep.copy(alpha = strength * 0.35f * pulse),
+                accent.copy(alpha = strength * pulse),
+                accent.copy(alpha = strength * 0.35f * pulse),
                 Color.Transparent,
             ),
             center = centre,

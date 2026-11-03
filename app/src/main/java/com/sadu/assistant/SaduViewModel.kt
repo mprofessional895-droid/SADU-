@@ -210,6 +210,28 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     /** Last question and last answer, shown on the home screen. */
     val lastTurn: List<ChatMsg> get() = messages.takeLast(2)
 
+    /** Measured speed of the last reply, when it was answered on this phone. */
+    val lastStats: TurnStats? get() = messages.lastOrNull { !it.fromUser }?.stats
+
+    /** Generation speeds of recent local replies, oldest first, for the sparkline. */
+    var tokHistory by mutableStateOf<List<Float>>(emptyList())
+        private set
+
+    /** What actually happened on this phone, newest first. Never invented filler. */
+    var homeEvents by mutableStateOf<List<HomeEvent>>(emptyList())
+        private set
+
+    fun noteEvent(text: String) {
+        homeEvents = (listOf(HomeEvent(System.currentTimeMillis(), text)) + homeEvents).take(8)
+    }
+
+    /** Puts a suggestion in the composer and opens the chat; nothing is sent on its own. */
+    fun trySaying(text: String) {
+        composerText = text
+        composerToken++
+        goToChat()
+    }
+
     // ------------------------------------------------------------------- memory
 
     var facts by mutableStateOf<List<String>>(emptyList())
@@ -350,7 +372,9 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun refreshCloudProblem() {
         cloudProblem = cloudConfig().problem()
+        val was = cloudReady
         cloudReady = cloudConfig().shouldAnswer(prefs.cloudEnabled)
+        if (cloudReady && !was) noteEvent("Cloud model connected")
     }
 
     // ------------------------------------------------------------------ runtime
@@ -467,6 +491,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         currentId = s.id
         openChatId = s.id
         assistant.resetHistory()
+        noteEvent("New conversation")
         persist()
     }
 
@@ -619,6 +644,8 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             streamThinking = null
             thinkingLive = false
             answeredBy = if (assistant.answeredWithModel) "Answered by " + router.lastUsed else null
+            perf?.let { if (it.genTokS > 0) tokHistory = (tokHistory + it.genTokS.toFloat()).takeLast(24) }
+            if (assistant.answeredWithModel) noteEvent("Answered by " + router.lastUsed)
             // One line per message, so a slow answer can be explained instead of guessed at.
             // Chat and Control are logged separately: they are different prompts and different
             // work, and mixing them makes every comparison meaningless.
@@ -863,6 +890,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     fun setWake(on: Boolean) {
         wakeOn = on
         prefs.wakeWordEnabled = on
+        noteEvent(if (on) "Wake word listening" else "Wake word off")
         val i = Intent(ctx, WakeWordService::class.java)
         try {
             if (on) {
@@ -898,9 +926,11 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             if (problem == null) {
                 modelReady = true
                 modelNote = READY_NOTE
+                noteEvent("On-device model loaded")
             } else {
                 modelReady = false
                 modelNote = "The model could not be loaded: $problem"
+                noteEvent("Model failed to load")
             }
             refreshRuntime()
         }
