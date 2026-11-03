@@ -12,6 +12,17 @@ val ndkRoot = file(
 )
 val hasNdk = ndkRoot.isDirectory && !(ndkRoot.list()?.isEmpty() ?: true)
 
+// Use the NDK that is actually installed instead of pinning one exact version: CI images rotate
+// their NDK, and asking for a version the runner does not have makes the SDK installer download a
+// ~650 MB archive, which has been failing there. Preference order first, then newest available.
+val installedNdks = ndkRoot.listFiles()
+    ?.filter { it.isDirectory && File(it, "source.properties").exists() }
+    ?.map { it.name }
+    .orEmpty()
+val preferredNdks = listOf("26.1.10909125", "27.3.13750724", "27.2.12479018", "28.2.13676358")
+val ndkVersionToUse = preferredNdks.firstOrNull { it in installedNdks }
+    ?: installedNdks.maxWithOrNull(compareBy { it.substringBefore('.').toIntOrNull() ?: 0 })
+
 // One certificate for every development build, whoever builds it.
 //
 // Android refuses to install an APK over one signed with a different key, which is why a build from
@@ -36,8 +47,8 @@ android {
     namespace = "com.sadu.assistant"
     compileSdk = 34
 
-    if (hasNdk) {
-        ndkVersion = "26.1.10909125"
+    if (hasNdk && ndkVersionToUse != null) {
+        ndkVersion = ndkVersionToUse
     }
 
     defaultConfig {
