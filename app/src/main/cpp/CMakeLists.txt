@@ -77,7 +77,15 @@ if(SADU_VULKAN AND SADU_GLSLC AND EXISTS "${SADU_GLSLC}")
     if(ANDROID)
         file(GLOB _ndk_host_dirs "${ANDROID_NDK}/toolchains/llvm/prebuilt/*")
         list(GET _ndk_host_dirs 0 _ndk_host)
-        set(VULKAN_INCLUDE_DIR "${_ndk_host}/sysroot/usr/include" CACHE PATH "" FORCE)
+        # The NDK ships vulkan.h but not vulkan.hpp, which ggml-vulkan includes. Khronos'
+        # headers are headers-only, so they are fetched rather than installed.
+        FetchContent_Declare(
+                vulkan_headers
+                URL https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v1.3.290.tar.gz
+                URL_HASH SHA256=f38a653bf93cab7a2a229a53d2d53b1cba9a2819e4c0a7de13c54085bde9bcf5
+        )
+        FetchContent_Populate(vulkan_headers)
+        set(VULKAN_INCLUDE_DIR "${vulkan_headers_SOURCE_DIR}/include" CACHE PATH "" FORCE)
         set(VULKAN_LIBRARY
                 "${_ndk_host}/sysroot/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/${ANDROID_PLATFORM_LEVEL}/libvulkan.so"
                 CACHE FILEPATH "" FORCE)
