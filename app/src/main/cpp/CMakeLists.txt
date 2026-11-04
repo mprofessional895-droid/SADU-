@@ -94,8 +94,15 @@ if(SADU_VULKAN AND SADU_GLSLC AND EXISTS "${SADU_GLSLC}")
         set(SADU_SPIRV_INCLUDE_DIR "${spirv_headers_SOURCE_DIR}/include" CACHE PATH "" FORCE)
         set(SADU_SPIRV_INCLUDE_DIR "${spirv_headers_SOURCE_DIR}/include")
         set(Vulkan_INCLUDE_DIR "${vulkan_headers_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+        # ggml-vulkan calls Vulkan 1.1 entry points, which the API 26 stub does not export; the
+        # stub is only a link-time promise, so the API 28 one is used while phones still install
+        # the APK from 26. The GPU is off by default and any device without it stays on the CPU.
+        set(_vk_stub_level "${ANDROID_PLATFORM_LEVEL}")
+        if(_vk_stub_level LESS 28)
+            set(_vk_stub_level 28)
+        endif()
         set(Vulkan_LIBRARY
-                "${_ndk_host}/sysroot/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/${ANDROID_PLATFORM_LEVEL}/libvulkan.so"
+                "${_ndk_host}/sysroot/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/${_vk_stub_level}/libvulkan.so"
                 CACHE FILEPATH "" FORCE)
     endif()
     message(STATUS "sadu: Vulkan backend ON (glslc ${SADU_GLSLC})")
