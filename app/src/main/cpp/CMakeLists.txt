@@ -71,8 +71,9 @@ endif()
 if(SADU_VULKAN AND SADU_GLSLC AND EXISTS "${SADU_GLSLC}")
     set(GGML_VULKAN ON CACHE BOOL "" FORCE)
     set(Vulkan_GLSLC_EXECUTABLE "${SADU_GLSLC}" CACHE FILEPATH "" FORCE)
-    # Path to the stand-in config for SPIRV-Headers, which this build asks for but never uses.
-    list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+    # ggml asks for SPIRV-Headers by name; pointing _DIR at the stand-in config is enough and,
+    # unlike CMAKE_PREFIX_PATH, survives into the fetched subproject.
+    set(SPIRV-Headers_DIR "${CMAKE_CURRENT_SOURCE_DIR}/cmake" CACHE PATH "" FORCE)
     if(ANDROID)
         file(GLOB _ndk_host_dirs "${ANDROID_NDK}/toolchains/llvm/prebuilt/*")
         list(GET _ndk_host_dirs 0 _ndk_host)
