@@ -32,6 +32,20 @@ set(LLAMA_SUBPROCESS OFF CACHE BOOL "" FORCE)
 set(LLAMA_LLGUIDANCE OFF CACHE BOOL "" FORCE)
 set(LLAMA_USE_PREBUILT_UI OFF CACHE BOOL "" FORCE)
 set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
+# The GPU backend only. Offloading the layers to Adreno is worth several times the prompt
+# speed on the phones this runs on; the shaders need glslc on the build machine, so a build
+# without it quietly stays CPU-only instead of failing.
+option(SADU_VULKAN "ggml: build the Vulkan backend for the phone's GPU" ON)
+if(SADU_VULKAN)
+    find_program(SADU_GLSLC NAMES glslc)
+    if(SADU_GLSLC AND ANDROID)
+        set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+        message(STATUS "sadu: Vulkan backend on, shaders with ${SADU_GLSLC}")
+    else()
+        set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+        message(STATUS "sadu: Vulkan backend off (no glslc on this machine)")
+    endif()
+endif()
 set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
 set(GGML_LTO OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
@@ -44,6 +58,34 @@ set(GGML_FATAL_WARNINGS OFF CACHE BOOL "" FORCE)
 # A build that must run on older hardware can pass -DsaduArmBaseline=armv8-a.
 set(SADU_ARM_BASELINE "armv8.2-a+dotprod+fp16" CACHE STRING "ggml -march for arm64")
 set(GGML_CPU_ARM_ARCH "${SADU_ARM_BASELINE}" CACHE STRING "" FORCE)
+
+# GPU offload: llama.cpp's Vulkan backend. The NDK supplies the headers and the libvulkan stub
+# the app links against; the build host needs glslc, because it turns the compute shaders into
+# SPIR-V at build time. Gradle hands us that path in SADU_GLSLC (see app/build.gradle.kts, which
+# unpacks the Ubuntu package when the host has none). Without it this stays a CPU-only build and
+# Settings says so instead of pretending.
+option(SADU_VULKAN "Build the Vulkan backend so layers can run on the GPU" ON)
+if(SADU_GLSLC AND EXISTS "${SADU_GLSLC}")
+    set(SADU_VULKAN ON)
+endif()
+if(SADU_VULKAN AND SADU_GLSLC AND EXISTS "${SADU_GLSLC}")
+    set(GGML_VULKAN ON CACHE BOOL "" FORCE)
+    set(Vulkan_GLSLC_EXECUTABLE "${SADU_GLSLC}" CACHE FILEPATH "" FORCE)
+    # Path to the stand-in config for SPIRV-Headers, which this build asks for but never uses.
+    list(APPEND CMAKE_PREFIX_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+    if(ANDROID)
+        file(GLOB _ndk_host_dirs "${ANDROID_NDK}/toolchains/llvm/prebuilt/*")
+        list(GET _ndk_host_dirs 0 _ndk_host)
+        set(VULKAN_INCLUDE_DIR "${_ndk_host}/sysroot/usr/include" CACHE PATH "" FORCE)
+        set(VULKAN_LIBRARY
+                "${_ndk_host}/sysroot/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/${ANDROID_PLATFORM_LEVEL}/libvulkan.so"
+                CACHE FILEPATH "" FORCE)
+    endif()
+    message(STATUS "sadu: Vulkan backend ON (glslc ${SADU_GLSLC})")
+else()
+    set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
+    message(STATUS "sadu: Vulkan backend OFF, CPU only")
+endif()
 
 FetchContent_MakeAvailable(llama_cpp)
 

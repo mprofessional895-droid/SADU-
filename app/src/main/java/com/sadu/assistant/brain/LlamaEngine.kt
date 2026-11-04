@@ -29,6 +29,10 @@ class LlamaEngine(private val ctx: Context) : Engine {
     var info: Gguf.Info? = null
         private set
 
+    /** "Vulkan GPU" or "CPU": where the loaded model's layers actually run. */
+    var backend: String = "CPU"
+        private set
+
     @Volatile
     private var writing = false
 
@@ -48,14 +52,14 @@ class LlamaEngine(private val ctx: Context) : Engine {
         runCatching { if (modelFile.exists()) modelFile.length() else 0L }.getOrDefault(0L)
 
     @Synchronized
-    override fun load(contextTokens: Int): Int {
+    override fun load(contextTokens: Int, gpuLayers: Int): Int {
         requireNative()
         val tokens = ContextBudget.clamp(contextTokens)
         if (handle != 0L && loadedTokens == tokens) return loadedTokens
         close()
         if (!isModelPresent()) throw IllegalStateException("No .gguf model has been imported yet.")
 
-        val opened = nativeLoad(modelFile.absolutePath, tokens, threads(), Batch)
+        val opened = nativeLoad(modelFile.absolutePath, tokens, threads(), Batch, gpuLayers)
         if (opened == 0L) {
             throw IllegalStateException(
                 nativeLastError().ifEmpty { "llama.cpp could not load that model file." },
@@ -63,6 +67,7 @@ class LlamaEngine(private val ctx: Context) : Engine {
         }
         handle = opened
         loadedTokens = tokens
+        backend = runCatching { nativeBackend(opened) }.getOrDefault("CPU")
         info = (Gguf.inspect(modelFile) as? Gguf.Check.Ok)?.info
         return loadedTokens
     }
@@ -156,6 +161,7 @@ class LlamaEngine(private val ctx: Context) : Engine {
         val current = handle
         handle = 0L
         loadedTokens = 0
+        backend = "CPU"
         if (current != 0L) runCatching { nativeFree(current) }
     }
 
@@ -262,7 +268,15 @@ class LlamaEngine(private val ctx: Context) : Engine {
         fun onToken(piece: String)
     }
 
-    private external fun nativeLoad(path: String, contextTokens: Int, threads: Int, batch: Int): Long
+    private external fun nativeLoad(
+        path: String,
+        contextTokens: Int,
+        threads: Int,
+        batch: Int,
+        gpuLayers: Int,
+    ): Long
+
+    private external fun nativeBackend(handle: Long): String
 
     private external fun nativeFree(handle: Long)
 
@@ -301,6 +315,9 @@ class LlamaEngine(private val ctx: Context) : Engine {
 
         const val Batch = 512
 
+        /** "Every layer": llama.cpp clamps this to the model's own layer count, so it stays safe. */
+        const val AllLayers = 99
+
         private const val ROLE_SYSTEM = "system"
         private const val ROLE_USER = "user"
         private const val ROLE_ASSISTANT = "assistant"
@@ -313,5 +330,13 @@ class LlamaEngine(private val ctx: Context) : Engine {
         val isAvailable: Boolean by lazy {
             runCatching { System.loadLibrary(Library) }.isSuccess
         }
+
+        /** True when the library was built with the Vulkan backend, so Settings can offer it. */
+        val gpuSupported: Boolean by lazy {
+            isAvailable && runCatching { nativeSupportsGpu() }.getOrDefault(false)
+        }
+
+        @JvmStatic
+        private external fun nativeSupportsGpu(): Boolean
     }
 }

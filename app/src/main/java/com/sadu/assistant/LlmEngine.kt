@@ -47,7 +47,7 @@ open class LlmEngine(private val ctx: Context) : Engine {
     override val isReady: Boolean get() = llm != null
 
     @Synchronized
-    override fun load(contextTokens: Int): Int {
+    override fun load(contextTokens: Int, gpuLayers: Int): Int {
         wantsTokens = ContextBudget.clamp(contextTokens)
         if (llm != null && loadedTokens == wantsTokens) return loadedTokens
         if (llm != null) close()

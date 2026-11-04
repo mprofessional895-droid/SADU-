@@ -83,6 +83,14 @@ class Prefs(ctx: Context) {
         get() = LocalEngine.of(p.getString("local_engine", null))
         set(v) = p.edit().putString("local_engine", v.key).apply()
 
+    /**
+     * Whether the `.gguf` model may put its layers on the GPU. Off by default: on a phone whose
+     * Vulkan driver misbehaves, the CPU path is the one that is known to work.
+     */
+    var gpuOffload: Boolean
+        get() = p.getBoolean("gpu_offload", false)
+        set(v) = p.edit().putBoolean("gpu_offload", v).apply()
+
     /** Whether Sadu may look something up and answer from it, instead of opening a browser. */
     var webAnswers: Boolean
         get() = p.getBoolean("web_answers", true)

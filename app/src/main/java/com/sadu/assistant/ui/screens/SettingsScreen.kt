@@ -105,6 +105,9 @@ data class SettingsUiState(
     val grantedCount: Int = 0,
     val permissionCount: Int = 0,
     val versionLine: String = "",
+    val gpuEnabled: Boolean = false,
+    val gpuAvailable: Boolean = false,
+    val backend: String = "",
     val contextTokens: Int = 4096,
     val contextEffective: Int = 0,
     val replyLength: ReplyLength = ReplyLength.Default,
@@ -164,6 +167,9 @@ fun SettingsScreen(vm: SaduViewModel) {
             grantedCount = vm.granted.size,
             permissionCount = com.sadu.assistant.PhoneActionCatalog.runtimePermissions(Build.VERSION.SDK_INT).size,
             versionLine = vm.versionLine,
+            gpuEnabled = vm.gpuEnabled,
+            gpuAvailable = vm.gpuAvailable,
+            backend = vm.backendName,
             contextTokens = vm.contextTokens,
             contextEffective = vm.contextEffective,
             replyLength = vm.replyLength,
@@ -187,6 +193,7 @@ fun SettingsScreen(vm: SaduViewModel) {
         onImportModel = { picker.launch(arrayOf("*/*")) },
         onImportGguf = { ggufPicker.launch(arrayOf("*/*")) },
         onChooseEngine = { vm.chooseEngine(it) },
+        onGpu = { vm.chooseGpu(it) },
         onReloadModel = { vm.loadModel() },
         onSpeak = { vm.setSpeak(it) },
         onWake = { vm.setWake(it) },
@@ -226,6 +233,7 @@ fun SettingsContent(
     onReloadModel: () -> Unit,
     onImportGguf: () -> Unit = {},
     onChooseEngine: (LocalEngine) -> Unit = {},
+    onGpu: (Boolean) -> Unit = {},
     onSpeak: (Boolean) -> Unit,
     onWake: (Boolean) -> Unit,
     onInternet: (Boolean) -> Unit,
@@ -315,6 +323,15 @@ fun SettingsContent(
                     onImportGguf = onImportGguf,
                     onReload = onReloadModel,
                 )
+                if (state.engine == LocalEngine.Llama) {
+                    Spacer(Modifier.height(12.dp))
+                    GpuCard(
+                        enabled = state.gpuEnabled,
+                        available = state.gpuAvailable,
+                        backend = state.backend,
+                        onToggle = onGpu,
+                    )
+                }
             }
         }
 

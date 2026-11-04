@@ -31,8 +31,13 @@ interface Engine {
     /** Copies the chosen model file into the app's own storage. Happens once. */
     fun importModel(uri: Uri, onProgress: (Long) -> Unit)
 
-    /** Loads (or reloads) the model. Returns the context window in tokens. */
-    fun load(contextTokens: Int): Int
+    /**
+     * Loads (or reloads) the model. Returns the context window in tokens.
+     *
+     * [gpuLayers] is how many transformer layers to hand to the GPU; the rest stay on the CPU.
+     * Only llama.cpp has a GPU backend, so MediaPipe ignores it.
+     */
+    fun load(contextTokens: Int, gpuLayers: Int = 0): Int
 
     /**
      * [maxNewTokens] is how long the reply may be. llama.cpp stops at it; MediaPipe has no output

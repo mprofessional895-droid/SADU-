@@ -55,6 +55,10 @@ struct Session {
     llama_model *model = nullptr;
     llama_context *ctx = nullptr;
     const llama_vocab *vocab = nullptr;
+    // What actually ended up holding the weights: "GPU" after a successful offload, "CPU"
+    // otherwise. Settings shows it, so "why is it still slow" has an answer on the phone.
+    std::string backend = "CPU";
+    int gpuLayers = 0;
     std::atomic<bool> cancelled{false};
     std::atomic<bool> loading{false};
     std::mutex busy;
@@ -75,7 +79,7 @@ extern "C" {
 
 JNIEXPORT jlong JNICALL
 Java_com_sadu_assistant_brain_LlamaEngine_nativeLoad(
-        JNIEnv *env, jobject, jstring path, jint nCtx, jint nThreads, jint nBatch) {
+        JNIEnv *env, jobject, jstring path, jint nCtx, jint nThreads, jint nBatch, jint nGpuLayers) {
     clearError();
     ensureBackend();
 
@@ -86,11 +90,23 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeLoad(
     }
 
     llama_model_params modelParams = llama_model_default_params();
-    modelParams.n_gpu_layers = 0;  // CPU only for now: the first honest step.
+    // Layers are split between the GPU and the CPU, which is how llama.cpp always works: the
+    // layers that fit go to the GPU, the rest stay on the CPU processors.
+    modelParams.n_gpu_layers = nGpuLayers > 0 ? nGpuLayers : 0;
     modelParams.vocab_only = false;
     modelParams.check_tensors = false;
 
     llama_model *model = llama_model_load_from_file(file.c_str(), modelParams);
+    int usedGpuLayers = modelParams.n_gpu_layers;
+    if (model == nullptr && modelParams.n_gpu_layers > 0) {
+        // A phone whose Vulkan driver cannot open the model must still get an answer, so the
+        // same file is tried again on the CPU before anything is reported as broken.
+        LOGI("GPU load failed, retrying on the CPU");
+        setError("");
+        modelParams.n_gpu_layers = 0;
+        usedGpuLayers = 0;
+        model = llama_model_load_from_file(file.c_str(), modelParams);
+    }
     if (model == nullptr) {
         setError("llama.cpp could not read that file. It has to be a .gguf model this phone can run.");
         return 0;
@@ -124,10 +140,28 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeLoad(
 
     session->ctx = ctx;
     session->vocab = llama_model_get_vocab(model);
-    LOGI("loaded %s (ctx=%u batch=%u threads=%d)", file.c_str(), llama_n_ctx(ctx), llama_n_batch(ctx),
-         ctxParams.n_threads);
+    session->gpuLayers = usedGpuLayers;
+    session->backend = usedGpuLayers > 0 ? "Vulkan GPU" : "CPU";
+    LOGI("loaded %s (ctx=%u batch=%u threads=%d gpu_layers=%d backend=%s)", file.c_str(),
+         llama_n_ctx(ctx), llama_n_batch(ctx), ctxParams.n_threads, usedGpuLayers,
+         session->backend.c_str());
     return reinterpret_cast<jlong>(session);
 }
+
+// "Vulkan GPU" when layers really went to the GPU this load, "CPU" otherwise.
+JNIEXPORT jstring JNICALL
+Java_com_sadu_assistant_brain_LlamaEngine_nativeBackend(JNIEnv *env, jobject, jlong handle) {
+    Session *session = sessionOf(handle);
+    return toJava(env, session != nullptr ? session->backend : "CPU");
+}
+
+// True when this library was built with a GPU backend at all, so Settings can offer the switch.
+JNIEXPORT jboolean JNICALL
+Java_com_sadu_assistant_brain_LlamaEngine_nativeSupportsGpu(JNIEnv *, jobject) {
+    ensureBackend();
+    return llama_supports_gpu_offload() ? JNI_TRUE : JNI_FALSE;
+}
+
 
 JNIEXPORT void JNICALL
 Java_com_sadu_assistant_brain_LlamaEngine_nativeFree(JNIEnv *, jobject, jlong handle) {

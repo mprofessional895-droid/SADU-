@@ -19,6 +19,7 @@ import com.sadu.assistant.ui.components.GhostButton
 import com.sadu.assistant.ui.components.HairlineDivider
 import com.sadu.assistant.ui.components.KeyValueRow
 import com.sadu.assistant.ui.components.StatusPill
+import com.sadu.assistant.ui.components.ToggleRow
 import com.sadu.assistant.ui.components.SurfaceCard
 
 /**
@@ -122,5 +123,62 @@ fun EngineCard(
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.fillMaxWidth(),
         )
+    }
+}
+
+/**
+ * Where the `.gguf` model does its arithmetic: the GPU, or the processors.
+ *
+ * llama.cpp splits a model by layer, so "GPU" is always a split - the layers that fit go to the
+ * Adreno GPU and the rest stay on the CPU. Small models usually fit whole. Off by default,
+ * because a phone with a broken Vulkan driver must keep working, and on such a phone the app
+ * falls back to the CPU on its own.
+ */
+@Composable
+fun GpuCard(
+    enabled: Boolean,
+    available: Boolean,
+    backend: String,
+    onToggle: (Boolean) -> Unit,
+) {
+    SurfaceCard {
+        Text("Graphics processor", color = Ink.Text, style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Layers that fit go to the GPU and the rest stay on the CPU processors. Small 0.5B to " +
+                "2B models usually fit whole; a bigger one is split, or refuses and runs on the " +
+                "CPU as before.",
+            color = Ink.TextDim,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Spacer(Modifier.height(10.dp))
+        when {
+            !available -> Text(
+                "This build has no GPU backend in it, so the model runs on the CPU.",
+                color = Ink.TextDim,
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            else -> {
+                ToggleRow(
+                    title = "Use the GPU",
+                    subtitle = if (enabled) {
+                        "On - the model reloads on the next load."
+                    } else {
+                        "Off - the model runs on the CPU."
+                    },
+                    checked = enabled,
+                    onCheckedChange = onToggle,
+                )
+                if (enabled && backend.isNotEmpty()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "Running on: $backend",
+                        color = Ink.TextDim,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
     }
 }

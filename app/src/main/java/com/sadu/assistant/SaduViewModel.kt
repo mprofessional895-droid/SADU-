@@ -378,6 +378,18 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     var modelLabel by mutableStateOf("")
         private set
 
+    /** Whether the `.gguf` model may put its layers on the GPU. */
+    var gpuEnabled by mutableStateOf(prefs.gpuOffload)
+        private set
+
+    /** True when this build carries the Vulkan backend, so the switch is worth showing. */
+    var gpuAvailable by mutableStateOf(false)
+        private set
+
+    /** "Vulkan GPU" or "CPU" - where the loaded model is actually running. */
+    var backendName by mutableStateOf("")
+        private set
+
     /** How far a .gguf copy is, or -1 when nothing is being copied. */
     var modelCopyPercent by mutableStateOf(-1)
         private set
@@ -880,16 +892,18 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         modelNote = "Loading the AI model..."
+        val layers = if (gpuEnabled && gpuAvailable) LlamaEngine.AllLayers else 0
         viewModelScope.launch {
             val problem = withContext(Dispatchers.IO) {
                 try {
-                    engine.load(contextTokens)
+                    engine.load(contextTokens, layers)
                     null
                 } catch (e: Throwable) {
                     e.message ?: e.toString()
                 }
             }
             contextEffective = engine.contextTokens
+            backendName = (engine as? LlamaEngine)?.backend.orEmpty()
             if (problem == null) {
                 modelReady = true
                 modelNote = READY_NOTE
@@ -976,6 +990,14 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         loadModel()
     }
 
+    /** Turns GPU offload on or off, then reloads the model so the choice takes effect now. */
+    fun chooseGpu(on: Boolean) {
+        if (on == prefs.gpuOffload) return
+        prefs.gpuOffload = on
+        gpuEnabled = on
+        if (prefs.localEngine == LocalEngine.Llama && llamaEngine.isModelPresent()) loadModel()
+    }
+
     /** The size behind a `content://` uri, when the picker will say. */
     private fun pickedBytes(uri: Uri): Long = runCatching {
         ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -1038,6 +1060,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         ttsReady = voice.isTtsReady
         if (ttsReady) ttsVoiceMissing = !voice.languageAvailable(language)
         engineAvailable = LlamaEngine.isAvailable
+        gpuAvailable = LlamaEngine.gpuSupported
         localEngineChoice = prefs.localEngine
         modelLabel = if (prefs.localEngine == LocalEngine.Llama) ggufLabel() else "Gemma .task"
         modelPresent = engine.isModelPresent()

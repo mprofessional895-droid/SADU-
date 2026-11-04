@@ -1,3 +1,4 @@
+import java.net.URI
 import java.util.Properties
 
 plugins {
@@ -32,6 +33,51 @@ val signKeyAlias = signingValue("SADU_KEY_ALIAS", "keyAlias")
 val signKeyPassword = signingValue("SADU_KEY_PASSWORD", "keyPassword")
 val signFile = signStorePath?.let { rootProject.file(it) }?.takeIf { it.isFile }
 
+// glslc turns llama.cpp's Vulkan compute shaders into SPIR-V while the library builds. A machine
+// with glslc on PATH is used as it is; a Linux x86-64 host without one gets the Ubuntu package
+// unpacked into build/vulkan-tools. Anything else builds the CPU-only library, and Settings says
+// the GPU is not in this APK.
+val hostGlslc: String? = System.getenv("PATH")
+    ?.split(File.pathSeparator)
+    ?.map { File(it, "glslc") }
+    ?.firstOrNull { it.canExecute() }
+    ?.absolutePath
+val unpackedGlslc = layout.buildDirectory.file("vulkan-tools/glslc").get().asFile
+val glslcPath = hostGlslc ?: unpackedGlslc.absolutePath
+val canUnpackGlslc = System.getProperty("os.name").lowercase().contains("linux") &&
+    System.getProperty("os.arch").let { it == "amd64" || it == "x86_64" }
+
+val prepareGlslc = tasks.register("prepareGlslc") {
+    onlyIf { hostGlslc == null && canUnpackGlslc }
+    outputs.file(unpackedGlslc)
+    doLast {
+        val dir = unpackedGlslc.parentFile
+        listOf(
+            "http://mirrors.kernel.org/ubuntu/pool/universe/s/shaderc/glslc_2023.8-1build1_amd64.deb",
+            "http://mirrors.kernel.org/ubuntu/pool/universe/s/shaderc/libshaderc1_2023.8-1build1_amd64.deb",
+        ).forEach { url ->
+            val deb = File(dir, url.substringAfterLast('/'))
+            dir.mkdirs()
+            URI(url).toURL().openStream().use { input ->
+                deb.outputStream().use { output -> input.copyTo(output) }
+            }
+            providers.exec {
+                commandLine("dpkg-deb", "-x", deb.absolutePath, dir.absolutePath)
+            }.result.get()
+        }
+        unpackedGlslc.writeText(
+            "#!/bin/sh\n" +
+                "DIR=\$(cd \"\$(dirname \"\$0\")\" && pwd)\n" +
+                "LD_LIBRARY_PATH=\"\$DIR/usr/lib/x86_64-linux-gnu\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}\" " +
+                "exec \"\$DIR/usr/bin/glslc\" \"\$@\"\n",
+        )
+        unpackedGlslc.setExecutable(true)
+    }
+}
+
+// CMake is configured before it builds, so the unpack has to happen first.
+tasks.matching { it.name.contains("CMake") }.configureEach { dependsOn(prepareGlslc) }
+
 android {
     namespace = "com.sadu.assistant"
     compileSdk = 34
@@ -44,8 +90,8 @@ android {
         applicationId = "com.sadu.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 47
-        versionName = "0.33.1"
+        versionCode = 48
+        versionName = "0.33.2"
         ndk { abiFilters += listOf("arm64-v8a") }
 
         if (hasNdk) {
@@ -57,6 +103,7 @@ android {
                         "-DANDROID_STL=c++_shared",
                         "-DCMAKE_BUILD_TYPE=Release",
                         "-DsaduArmBaseline=$arm",
+                        "-DSADU_GLSLC=$glslcPath",
                     )
                 }
             }
