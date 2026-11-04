@@ -85,6 +85,14 @@ if(SADU_VULKAN AND SADU_GLSLC AND EXISTS "${SADU_GLSLC}")
                 URL_HASH SHA256=f38a653bf93cab7a2a229a53d2d53b1cba9a2819e4c0a7de13c54085bde9bcf5
         )
         FetchContent_Populate(vulkan_headers)
+        FetchContent_Declare(
+                spirv_headers
+                URL https://github.com/KhronosGroup/SPIRV-Headers/archive/refs/tags/vulkan-sdk-1.3.290.0.tar.gz
+                URL_HASH SHA256=1b9ff8a33e07814671dee61fe246c67ccbcfc9be6581f229e251784499700e24
+        )
+        FetchContent_Populate(spirv_headers)
+        set(SADU_SPIRV_INCLUDE_DIR "${spirv_headers_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+        set(SADU_SPIRV_INCLUDE_DIR "${spirv_headers_SOURCE_DIR}/include")
         set(Vulkan_INCLUDE_DIR "${vulkan_headers_SOURCE_DIR}/include" CACHE PATH "" FORCE)
         set(Vulkan_LIBRARY
                 "${_ndk_host}/sysroot/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/${ANDROID_PLATFORM_LEVEL}/libvulkan.so"

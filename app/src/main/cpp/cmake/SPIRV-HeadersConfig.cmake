@@ -1,5 +1,7 @@
-# ggml-vulkan asks for SPIRV-Headers but nothing in this build links against it: the shaders are
-# compiled to SPIR-V by glslc and embedded by vulkan-shaders-gen, which does not use the headers.
-# Standalone glslc packages therefore do not need the whole Vulkan SDK, and this file stands in
-# for the package's CMake config.
+# ggml-vulkan asks for SPIRV-Headers because its headers include spirv/unified1/spirv.hpp. A full
+# Vulkan SDK would answer with a package config; this build fetches the headers itself and
+# publishes their location through SADU_SPIRV_INCLUDE_DIR.
 set(SPIRV-Headers_FOUND TRUE)
+if(SADU_SPIRV_INCLUDE_DIR)
+    include_directories("${SADU_SPIRV_INCLUDE_DIR}")
+endif()
