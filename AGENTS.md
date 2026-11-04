@@ -567,3 +567,24 @@ Moving to a machine without the key: copy the two files from the signing backup,
 - `PerfLine` parses llama.cpp's counters into prefill/gen phases; `SaduViewModel` logs one
   `SaduPerf` line per message with mode, steps and tool time. Chat and Control are never mixed.
 - Control sampling is 0.2 (was 0.6); a command needs a JSON object, not liveliness.
+
+## Why the app closed while the local model was thinking (v0.36.3)
+
+Three separate ways a long local turn could end with the app simply gone, no error shown:
+
+- **Memory, not an exception.** The model and its KV cache live in native memory, which Android
+  does not charge to the app heap: when RAM runs out the process is killed outright.
+  `MemoryGuard` refuses a load that needs more than free RAM minus 512 MB, and
+  `OfflineBrain` shortens the turn to 384 tokens while the phone is under pressure. A load is
+  never refused for a model that is already resident (its pages are counted twice otherwise).
+- **JNI string conversion aborted the process.** llama.cpp pieces can end mid-character, and
+  `NewStringUTF` aborts under CheckJNI on invalid or four-byte UTF-8 - Hindi and emoji were
+  enough. `completeUtf8` in `llama_jni.cpp` emits only complete sequences, holds a partial tail
+  for the next piece, and replaces invalid bytes and anything above the BMP with U+FFFD. Every
+  JNI string goes through it.
+- **A mid-turn `close()` freed a live session.** `close()` now cancels first and frees under the
+  same monitor `run()` holds. `run()` itself is `@Synchronized`, so an engine switch, context
+  change or import during generation waits for the decoder instead of freeing its memory.
+
+Also capped: a reasoning block is shown and saved as at most 6 000 characters
+(`Think.preview`), keeping both Compose layout and `chats.json` small on a long think.

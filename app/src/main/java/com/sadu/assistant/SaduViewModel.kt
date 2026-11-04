@@ -622,7 +622,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
                 ChatMsg(
                     text = Think.answer(reply).ifBlank { reply },
                     fromUser = false,
-                    thinking = thought.takeIf { it.isNotBlank() },
+                    thinking = Think.preview(thought).takeIf { it.isNotBlank() },
                     stats = TurnStats(
                         thinkingMs = turn.thinkingMs(),
                         promptMs = perf?.promptMs,
@@ -728,7 +728,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun publish(raw: String, turn: TurnClock?) {
         val split = Think.split(raw)
-        if (split.thinking.isNotBlank()) streamThinking = split.thinking.trim()
+        if (split.thinking.isNotBlank()) streamThinking = Think.preview(split.thinking)
         val answer = split.answer.trimStart()
         if (answer.isNotBlank()) {
             if (thinkingLive) turn?.thoughtDone()
@@ -902,7 +902,9 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         modelNote = "Loading the AI model..."
         val bytes = engine.modelBytes()
         val (available, _) = memoryMb()
-        if (bytes > 0 && !MemoryGuard.fits(bytes, available)) {
+        // The model's own pages are already resident when it is loaded, so counting them again
+        // would refuse a reload that only changes the context window.
+        if (!engine.isReady && bytes > 0 && !MemoryGuard.fits(bytes, available)) {
             modelReady = false
             modelNote = MemoryGuard.refusal(bytes, available)
             refreshRuntime()

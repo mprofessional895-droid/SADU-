@@ -42,8 +42,16 @@ std::string fromJava(JNIEnv *env, jstring value) {
     return out;
 }
 
+// Defined below; toJava needs it to keep JNI strings valid.
+std::string completeUtf8(std::string &pending);
+
 jstring toJava(JNIEnv *env, const std::string &value) {
-    return env->NewStringUTF(value.c_str());
+    // NewStringUTF takes modified UTF-8 and CheckJNI aborts on anything else, so nothing from
+    // the model, its metadata or a template goes through unsanitised.
+    std::string pending(value);
+    std::string safe = completeUtf8(pending);
+    if (!pending.empty()) safe += "\xEF\xBF\xBD";
+    return env->NewStringUTF(safe.c_str());
 }
 
 void ensureBackend() {
@@ -67,6 +75,72 @@ struct Session {
 
 Session *sessionOf(jlong handle) {
     return reinterpret_cast<Session *>(handle);
+}
+
+// Makes token pieces safe to hand to NewStringUTF. A piece can end in the middle of a
+// multi-byte character (Devanagari, emoji, any non-ASCII reply), and CheckJNI aborts the whole
+// process when that happens - the app just disappears mid-answer. Complete sequences are
+// returned, a partial tail stays in [pending] for the next piece, invalid bytes become U+FFFD.
+std::string completeUtf8(std::string &pending) {
+    std::string out;
+    size_t i = 0;
+    while (i < pending.size()) {
+        const unsigned char c = static_cast<unsigned char>(pending[i]);
+        size_t need = 0;
+        unsigned int cp = 0;
+        if (c == 0x00) {
+            // A raw NUL cannot travel through c_str(); it also never belongs in a reply.
+            out += ' ';
+            ++i;
+            continue;
+        } else if (c < 0x80) {
+            need = 1;
+            cp = c;
+        } else if ((c & 0xE0) == 0xC0) {
+            need = 2;
+            cp = c & 0x1F;
+        } else if ((c & 0xF0) == 0xE0) {
+            need = 3;
+            cp = c & 0x0F;
+        } else if ((c & 0xF8) == 0xF0) {
+            need = 4;
+            cp = c & 0x07;
+        } else {
+            out += "\xEF\xBF\xBD";
+            ++i;
+            continue;
+        }
+        if (i + need > pending.size()) break;  // the rest of this character is in the next piece
+        bool ok = true;
+        for (size_t k = 1; k < need; ++k) {
+            const unsigned char cc = static_cast<unsigned char>(pending[i + k]);
+            if ((cc & 0xC0) != 0x80) {
+                ok = false;
+                break;
+            }
+            cp = (cp << 6) | (cc & 0x3F);
+        }
+        if (ok && ((need == 2 && cp < 0x80) || (need == 3 && cp < 0x800) ||
+                   (need == 4 && cp < 0x10000) || cp > 0x10FFFF ||
+                   (cp >= 0xD800 && cp <= 0xDFFF))) {
+            ok = false;
+        }
+        // Modified UTF-8 has no four-byte form, so anything above the BMP becomes U+FFFD.
+        if (ok && need == 4) {
+            out += "\xEF\xBF\xBD";
+            i += need;
+            continue;
+        }
+        if (!ok) {
+            out += "\xEF\xBF\xBD";
+            ++i;
+            continue;
+        }
+        out.append(pending, i, need);
+        i += need;
+    }
+    pending.erase(0, i);
+    return out;
 }
 
 }  // namespace
@@ -317,6 +391,8 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
     }
 
     std::string answer;
+    // Holds bytes of a character whose remaining bytes have not arrived yet.
+    std::string pending;
     bool failed = false;
     const int batchSize = static_cast<int>(llama_n_batch(session->ctx));
 
@@ -356,19 +432,22 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
         char piece[256];
         const int pieceLength = llama_token_to_piece(session->vocab, next, piece, sizeof(piece), 0, false);
         if (pieceLength > 0) {
-            answer.append(piece, static_cast<size_t>(pieceLength));
-            if (onToken != nullptr) {
-                const std::string chunk(piece, static_cast<size_t>(pieceLength));
-                jstring javaPiece = env->NewStringUTF(chunk.c_str());
-                if (javaPiece != nullptr) {
-                    env->CallVoidMethod(sink, onToken, javaPiece);
-                    env->DeleteLocalRef(javaPiece);
-                }
-                // A throw in the callback (a cancelled screen, say) must not kill the build-up of
-                // the answer: stop streaming and keep generating.
-                if (env->ExceptionCheck()) {
-                    env->ExceptionClear();
-                    onToken = nullptr;
+            pending.append(piece, static_cast<size_t>(pieceLength));
+            const std::string valid = completeUtf8(pending);
+            if (!valid.empty()) {
+                answer.append(valid);
+                if (onToken != nullptr) {
+                    jstring javaPiece = env->NewStringUTF(valid.c_str());
+                    if (javaPiece != nullptr) {
+                        env->CallVoidMethod(sink, onToken, javaPiece);
+                        env->DeleteLocalRef(javaPiece);
+                    }
+                    // A throw in the callback (a cancelled screen, say) must not kill the build-up of
+                    // the answer: stop streaming and keep generating.
+                    if (env->ExceptionCheck()) {
+                        env->ExceptionClear();
+                        onToken = nullptr;
+                    }
                 }
             }
         }
@@ -383,6 +462,12 @@ Java_com_sadu_assistant_brain_LlamaEngine_nativeGenerate(
             llama_memory_clear(memory, true);
             break;
         }
+    }
+
+    // A character cut off by the token limit or a stop has no remaining bytes; never drop it silently.
+    if (!pending.empty()) {
+        answer += "\xEF\xBF\xBD";
+        pending.clear();
     }
 
     llama_sampler_free(chain);

@@ -63,4 +63,18 @@ class ThinkTest {
         assertFalse(Think.answer(raw).contains("hidden"))
         assertEquals("visible", Think.answer(raw))
     }
+
+    @Test
+    fun aLongThinkBlockKeepsTheEndWhereTheAnswerForms() {
+        val long = "a".repeat(Think.PreviewLimit + 25) + "tail-marker"
+        val preview = Think.preview(long)
+        assertTrue(preview.startsWith("\u2026"))
+        assertTrue(preview.endsWith("tail-marker"))
+        assertTrue(preview.length <= Think.PreviewLimit + 10)
+    }
+
+    @Test
+    fun aShortThinkBlockIsShownUnchanged() {
+        assertEquals("short thought", Think.preview("  short thought  "))
+    }
 }

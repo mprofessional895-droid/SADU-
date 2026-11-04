@@ -23,6 +23,16 @@ object Think {
 
     const val OFF_SUFFIX = "\n/no_think"
 
+    /** How much of a long reasoning block is shown or saved: enough to explain, not enough to bloat. */
+    const val PreviewLimit = 6000
+
+    /** A reasoning block cut for the card. The end is kept, because that is where the answer forms. */
+    fun preview(thinking: String): String {
+        val one = thinking.trim()
+        if (one.length <= PreviewLimit) return one
+        return "\u2026\n" + one.takeLast(PreviewLimit)
+    }
+
     data class Split(val thinking: String, val answer: String, val open: Boolean)
 
     private val OPEN = Regex(

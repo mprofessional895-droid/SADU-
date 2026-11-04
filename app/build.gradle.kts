@@ -55,8 +55,8 @@ android {
         applicationId = "com.sadu.assistant"
         minSdk = 26
         targetSdk = 34
-        versionCode = 45
-        versionName = "0.36.2"
+        versionCode = 46
+        versionName = "0.36.3"
         ndk { abiFilters += listOf("arm64-v8a") }
 
         if (hasNdk) {
