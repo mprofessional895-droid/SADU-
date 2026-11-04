@@ -85,8 +85,8 @@ if(SADU_VULKAN AND SADU_GLSLC AND EXISTS "${SADU_GLSLC}")
                 URL_HASH SHA256=f38a653bf93cab7a2a229a53d2d53b1cba9a2819e4c0a7de13c54085bde9bcf5
         )
         FetchContent_Populate(vulkan_headers)
-        set(VULKAN_INCLUDE_DIR "${vulkan_headers_SOURCE_DIR}/include" CACHE PATH "" FORCE)
-        set(VULKAN_LIBRARY
+        set(Vulkan_INCLUDE_DIR "${vulkan_headers_SOURCE_DIR}/include" CACHE PATH "" FORCE)
+        set(Vulkan_LIBRARY
                 "${_ndk_host}/sysroot/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/${ANDROID_PLATFORM_LEVEL}/libvulkan.so"
                 CACHE FILEPATH "" FORCE)
     endif()
