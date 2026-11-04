@@ -13,6 +13,16 @@ package com.sadu.assistant
  */
 object Think {
 
+    /**
+     * Instructions added when thinking is switched off in Settings. The suffix is the switch
+     * Qwen3 reads inside the user message; the sentence covers every other model.
+     */
+    const val OFF_INSTRUCTION =
+        "Do not use a thinking or reasoning block. Answer directly, without working-out, and " +
+            "never write  thinking, <thought> or <|channel|> tags."
+
+    const val OFF_SUFFIX = "\n/no_think"
+
     data class Split(val thinking: String, val answer: String, val open: Boolean)
 
     private val OPEN = Regex(

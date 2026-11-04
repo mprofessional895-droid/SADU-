@@ -116,6 +116,7 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         { cloudWanted() },
         { if (prefs.cloudEnabled) cloudConfig().problem() else null },
         { mode -> promptOverride.system(mode) },
+        { prefs.thinkingEnabled },
     )
     private val store = ChatHistory(ctx)
 
@@ -270,6 +271,15 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
     /** The user's own extra instructions for Chat mode. */
     var chatInstructions by mutableStateOf(prefs.chatInstructions)
         private set
+
+    /** Whether a reasoning model may write its working-out before the answer. */
+    var thinkingEnabled by mutableStateOf(prefs.thinkingEnabled)
+        private set
+
+    fun chooseThinking(on: Boolean) {
+        thinkingEnabled = on
+        prefs.thinkingEnabled = on
+    }
 
     // ---------------------------------------------------------------- TEMPORARY prompt editor
     // For manual prompt testing only. Off = the shipped prompts, untouched.

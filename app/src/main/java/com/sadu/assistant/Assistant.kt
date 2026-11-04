@@ -44,6 +44,8 @@ class Assistant(
     private val brainProblem: () -> String? = { null },
     /** TEMPORARY: a hand-written system prompt, or null to use the shipped one. */
     private val promptOverride: (Mode) -> String? = { null },
+    /** Whether a reasoning model may write its working-out, from Settings. */
+    private val thinking: () -> Boolean = { true },
 ) {
     private val history = ArrayList<Turn>()
 
@@ -393,7 +395,9 @@ class Assistant(
         // wrong picks. An unrecognised message keeps all of them.
         val menu = if (current == Mode.Control) tools.menu(tools.specsFor(text)) else ""
         val said = promptOverride(current)
-        val instructions = said ?: Prompt.system(
+        // Control mode keeps its prompt untouched: the switch is a Chat-mode setting.
+        val thinkingOn = thinking() || current == Mode.Control
+        val base = said ?: Prompt.system(
             mode = current,
             facts = memory.asContext(text),
             languageName = languageName(),
@@ -406,12 +410,14 @@ class Assistant(
             toolResults = toolResults.map { Steps.resultLine(it) },
             retry = retry,
         )
-        val fixed = ContextBudget.estimate(instructions) + ContextBudget.estimate(text)
+        val instructions = if (thinkingOn) base else base + "\n" + Think.OFF_INSTRUCTION
+        val asked = if (thinkingOn) text else text + Think.OFF_SUFFIX
+        val fixed = ContextBudget.estimate(instructions) + ContextBudget.estimate(asked)
         val window = ContextBudget.clamp(contextTokens())
         return LlmRequest(
             system = instructions,
             turns = ContextBudget.compact(history, window, fixed),
-            user = text,
+            user = asked,
             mode = current,
         )
     }

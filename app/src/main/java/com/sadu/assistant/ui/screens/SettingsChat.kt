@@ -18,9 +18,11 @@ import com.sadu.assistant.Sampling
 import com.sadu.assistant.prompt.ChatPrompt
 import com.sadu.assistant.prompt.ChatStyle
 import com.sadu.assistant.ui.Ink
+import com.sadu.assistant.ui.components.HairlineDivider
 import com.sadu.assistant.ui.components.SaduTextField
 import com.sadu.assistant.ui.components.StatusPill
 import com.sadu.assistant.ui.components.SurfaceCard
+import com.sadu.assistant.ui.components.ToggleRow
 
 /**
  * Chat mode's own settings.
@@ -36,6 +38,8 @@ fun ChatBrainCard(
     onStyle: (ChatStyle) -> Unit,
     onTemperature: (Float) -> Unit,
     onInstructions: (String) -> Unit,
+    thinking: Boolean = true,
+    onThinking: (Boolean) -> Unit = {},
 ) {
     SurfaceCard {
         Text("Chat brain", color = Ink.Text, style = MaterialTheme.typography.titleMedium)
@@ -104,6 +108,16 @@ fun ChatBrainCard(
             color = Ink.TextDim,
             style = MaterialTheme.typography.bodySmall,
         )
+
+        Spacer(Modifier.height(14.dp))
+        ToggleRow(
+            title = "Let the model think first",
+            subtitle = "Off answers straight away and skips the reasoning block. " +
+                "Turning it off also saves memory on a long reply.",
+            checked = thinking,
+            onCheckedChange = onThinking,
+        )
+        HairlineDivider()
 
         Spacer(Modifier.height(14.dp))
         Text("Your own instructions", color = Ink.Text, style = MaterialTheme.typography.labelMedium)

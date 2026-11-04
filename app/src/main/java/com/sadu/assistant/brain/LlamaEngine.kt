@@ -90,6 +90,7 @@ class LlamaEngine(private val ctx: Context) : Engine {
         onDelta: ((String) -> Unit)? = null,
     ): String = run(prompt, sampling, maxNewTokens, onDelta, grammar, stops)
 
+    @Synchronized
     private fun run(
         prompt: String,
         sampling: Sampling,
@@ -151,12 +152,23 @@ class LlamaEngine(private val ctx: Context) : Engine {
         return true
     }
 
-    @Synchronized
+    /**
+     * Stops any turn that is running before the native session is freed. Without this, a
+     * close that arrives mid-generation (engine switch, context change, import) frees the
+     * session the decoder is still holding, and the process dies.
+     */
     override fun close() {
         val current = handle
-        handle = 0L
-        loadedTokens = 0
-        if (current != 0L) runCatching { nativeFree(current) }
+        if (current != 0L) {
+            writingCancelled = true
+            runCatching { nativeCancel(current) }
+        }
+        synchronized(this) {
+            val held = handle
+            handle = 0L
+            loadedTokens = 0
+            if (held != 0L) runCatching { nativeFree(held) }
+        }
     }
 
     /** What llama.cpp says the loaded file is: description;params;bytes;trainedCtx;hasTemplate. */

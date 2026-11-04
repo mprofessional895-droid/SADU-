@@ -111,6 +111,7 @@ data class SettingsUiState(
     val chatStyle: ChatStyle = ChatStyle.Default,
     val chatTemperature: Float = Sampling.DefaultTemperature,
     val chatInstructions: String = "",
+    val thinking: Boolean = true,
     /** TEMPORARY: the hand-written prompts from Settings, for manual testing. */
     val customPromptOn: Boolean = false,
     val customChatPrompt: String = "",
@@ -170,6 +171,7 @@ fun SettingsScreen(vm: SaduViewModel) {
             chatStyle = vm.chatStyle,
             chatTemperature = vm.chatTemperature,
             chatInstructions = vm.chatInstructions,
+            thinking = vm.thinkingEnabled,
             customPromptOn = vm.customPromptOn,
             customChatPrompt = vm.customChatPrompt,
             customControlPrompt = vm.customControlPrompt,
@@ -203,6 +205,7 @@ fun SettingsScreen(vm: SaduViewModel) {
         onChatStyle = { vm.chooseChatStyle(it) },
         onChatTemperature = { vm.chooseChatTemperature(it) },
         onChatInstructions = { vm.editChatInstructions(it) },
+        onThinking = { vm.chooseThinking(it) },
         onCloudEnabled = { vm.chooseCloudEnabled(it) },
         onCloudProvider = { vm.chooseCloudProvider(it) },
         onCloudBaseUrl = { vm.editCloudBaseUrl(it) },
@@ -238,6 +241,7 @@ fun SettingsContent(
     onChatStyle: (ChatStyle) -> Unit = {},
     onChatTemperature: (Float) -> Unit = {},
     onChatInstructions: (String) -> Unit = {},
+    onThinking: (Boolean) -> Unit = {},
     onCloudEnabled: (Boolean) -> Unit = {},
     onCloudProvider: (CloudProvider) -> Unit = {},
     onCloudBaseUrl: (String) -> Unit = {},
@@ -329,6 +333,8 @@ fun SettingsContent(
                     onStyle = onChatStyle,
                     onTemperature = onChatTemperature,
                     onInstructions = onChatInstructions,
+                    thinking = state.thinking,
+                    onThinking = onThinking,
                 )
             }
         }

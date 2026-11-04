@@ -132,4 +132,12 @@ class Prefs(ctx: Context) {
     var chatInstructions: String
         get() = p.getString("chat_instructions", "").orEmpty()
         set(v) = p.edit().putString("chat_instructions", v.trim().take(ChatPrompt.MAX_EXTRA)).apply()
+
+    /**
+     * Whether a reasoning model may write its working-out before the answer.
+     * On by default, which is how every model behaved before this switch existed.
+     */
+    var thinkingEnabled: Boolean
+        get() = p.getBoolean("thinking", true)
+        set(v) = p.edit().putBoolean("thinking", v).apply()
 }
