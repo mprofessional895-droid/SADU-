@@ -98,6 +98,11 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             if (mode == Mode.Chat) Sampling.chat(prefs.chatTemperature) else Sampling.Command
         },
         length = { prefs.replyLength },
+        cap = {
+            val (available, total) = memoryMb()
+            if (target === llamaEngine) MemoryGuard.tokenCap(available, total, prefs.replyLength.tokens)
+            else Int.MAX_VALUE
+        },
     )
     private val assistant = Assistant(
         brain,
@@ -895,6 +900,14 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         modelNote = "Loading the AI model..."
+        val bytes = engine.modelBytes()
+        val (available, _) = memoryMb()
+        if (bytes > 0 && !MemoryGuard.fits(bytes, available)) {
+            modelReady = false
+            modelNote = MemoryGuard.refusal(bytes, available)
+            refreshRuntime()
+            return
+        }
         viewModelScope.launch {
             val problem = withContext(Dispatchers.IO) {
                 try {
@@ -1251,6 +1264,17 @@ class SaduViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+
+    /** Free and total RAM in MB, for the load check and the turn's token cap. */
+    private fun memoryMb(): Pair<Int, Int> {
+        val info = android.app.ActivityManager.MemoryInfo()
+        runCatching {
+            (ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager)
+                ?.getMemoryInfo(info)
+        }
+        return (info.availMem / (1024L * 1024L)).toInt() to
+            (info.totalMem / (1024L * 1024L)).toInt()
+    }
 
     /** Peak resident memory of the app so far, for the perf line. */
     private fun ramPeak(): String {
