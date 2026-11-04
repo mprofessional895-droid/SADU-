@@ -106,6 +106,23 @@ endif()
 
 FetchContent_MakeAvailable(llama_cpp)
 
+# bionic declares aligned_alloc only from API 28 and this app starts at 26, so the Vulkan buffer
+# allocator gets the portable call. The patch is idempotent: it rewrites the line once.
+if(ANDROID AND GGML_VULKAN)
+    set(_vk_buffers "${llama_cpp_SOURCE_DIR}/ggml/src/ggml-vulkan/ggml-vulkan-buffers.cpp")
+    if(EXISTS "${_vk_buffers}")
+        file(READ "${_vk_buffers}" _vk_text)
+        if(_vk_text MATCHES "std::aligned_alloc")
+            string(REPLACE
+                    "    return std::aligned_alloc(align, size);"
+                    "    void * ptr = nullptr;\n    return posix_memalign(&ptr, align, size) == 0 ? ptr : nullptr;"
+                    _vk_text "${_vk_text}")
+            file(WRITE "${_vk_buffers}" "${_vk_text}")
+            message(STATUS "sadu: Vulkan buffers use posix_memalign (no aligned_alloc at API 26)")
+        endif()
+    endif()
+endif()
+
 # Android Gradle adds -g to the command line. Release libraries here are meant for the APK, not for
 # a debugger, and the debug info alone is ten times the size of the code - so it comes straight
 # back off. -g0 lands after -g, which is what decides it.
